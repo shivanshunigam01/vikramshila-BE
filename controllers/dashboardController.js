@@ -9,7 +9,7 @@ const RES = require("../utils/response");
 exports.stats = async (req, res) => {
   const [products, schemes, services, enquiries, launches, testimonials] = await Promise.all([
     Product.countDocuments(),
-    Scheme.countDocuments(),
+    Scheme.countDocuments(),  
     Service.countDocuments(),
     Enquiry.countDocuments(),
     Launch.countDocuments(),

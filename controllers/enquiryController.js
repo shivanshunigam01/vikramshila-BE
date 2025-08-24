@@ -11,24 +11,24 @@ const dateFilter = (filter) => {
   return from ? { $gte: from, $lte: now } : undefined;
 };
 
-exports.create = async (req, res) => {
-  try {
-    const doc = await Enquiry.create(req.body);
+  exports.create = async (req, res) => {
     try {
-      await sendMail({
-        to: process.env.ADMIN_EMAIL,
-        subject: `New Enquiry from ${doc.fullName}`,
-        html: `<p><b>Name:</b> ${doc.fullName}</p>
-               <p><b>Mobile:</b> ${doc.mobileNumber}</p>
-               <p><b>State:</b> ${doc.state || ""}</p>
-               <p><b>Pincode:</b> ${doc.pincode || ""}</p>
-               <p><b>Product:</b> ${doc.product || ""}</p>
-               <p><b>WhatsApp:</b> ${doc.whatsappConsent ? "Yes" : "No"}</p>`,
-      });
-    } catch (e) { /* log only */ }
-    return RESP.created(res, doc, "Enquiry received");
-  } catch (e) { return RESP.bad(res, e.message, 400); }
-};
+      const doc = await Enquiry.create(req.body);
+      try {
+        await sendMail({
+          to: process.env.ADMIN_EMAIL,
+          subject: `New Enquiry from ${doc.fullName}`,
+          html: `<p><b>Name:</b> ${doc.fullName}</p>
+                <p><b>Mobile:</b> ${doc.mobileNumber}</p>
+                <p><b>State:</b> ${doc.state || ""}</p>
+                <p><b>Pincode:</b> ${doc.pincode || ""}</p>
+                <p><b>Product:</b> ${doc.product || ""}</p>
+                <p><b>WhatsApp:</b> ${doc.whatsappConsent ? "Yes" : "No"}</p>`,
+        });
+      } catch (e) { /* log only */ }
+      return RESP.created(res, doc, "Enquiry received");
+    } catch (e) { return RESP.bad(res, e.message, 400); }
+  };
 
 exports.list = async (req, res) => {
   const { filter, contacted } = req.query;

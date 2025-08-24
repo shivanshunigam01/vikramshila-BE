@@ -1,51 +1,122 @@
 const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { cloudinary } = require("../utils/cloudinary"); // ✅ make sure utils/cloudinary.js is set up
 const path = require("path");
+const fs = require("fs");
 
-const makeStorage = (folder) =>
-  multer.diskStorage({
-    destination: (req, file, cb) =>
-      cb(null, path.join(__dirname, "..", "uploads", folder)),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      const base = path.basename(file.originalname, ext).replace(/\s+/g, "-");
-      cb(null, `${base}-${Date.now()}${ext}`);
-    },
-  });
+// ================= Product Media Upload =================
+// Images (Cloudinary)
+const productImageStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "products",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "avif"],
+    transformation: [{ quality: "auto" }, { fetch_format: "auto" }],
+  },
+});
 
-const imageFilter = (req, file, cb) => {
-  if (/^image\//.test(file.mimetype)) return cb(null, true);
-  cb(new Error("Only image files are allowed!"));
+// Brochure (Local disk storage)
+const brochureDiskStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dest = path.join(__dirname, "../uploads/brochures");
+    fs.mkdirSync(dest, { recursive: true }); // ensure folder exists
+    cb(null, dest);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}-${file.fieldname}${ext}`);
+  },
+});
+
+// ✅ Custom storage to handle both images (Cloudinary) + brochure (local)
+const productMediaStorage = {
+  _handleFile(req, file, cb) {
+    if (/^image\//.test(file.mimetype)) {
+      // send images to Cloudinary
+      return productImageStorage._handleFile(req, file, cb);
+    } else if (file.mimetype === "application/pdf") {
+      // save brochure locally
+      return brochureDiskStorage._handleFile(req, file, cb);
+    }
+    cb(new Error("Only image or PDF files are allowed!"));
+  },
+  _removeFile(req, file, cb) {
+    if (/^image\//.test(file.mimetype)) {
+      return productImageStorage._removeFile(req, file, cb);
+    } else if (file.mimetype === "application/pdf" && file.path) {
+      fs.unlink(file.path, cb);
+    } else {
+      cb();
+    }
+  },
 };
 
-const docFilter = (req, file, cb) => {
-  if (!file) {
-    return cb(null, true); // no file uploaded, allow
-  }
-  if (file.mimetype === "application/pdf") {
-    return cb(null, true); // accept only pdf
-  }
-  cb(new Error("Only PDF files are allowed!"), false);
-};
+uploadProductMedia = multer({ storage: productMediaStorage }).fields([
+  { name: "images", maxCount: 10 },
+  { name: "brochureFile", maxCount: 1 },
+]);
 
-exports.uploadProductImages = multer({
-  storage: makeStorage("products"),
-  fileFilter: imageFilter,
+// ================= Scheme Media Upload =================
+const schemeImageStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "schemes",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "avif"],
+    transformation: [{ quality: "auto" }, { fetch_format: "auto" }],
+  },
 });
-exports.uploadProductDocs = multer({
-  storage: makeStorage("products"),
-  fileFilter: docFilter,
+const uploadSchemeImages = multer({ storage: schemeImageStorage });
+
+// ================= Testimonial Media Upload =================
+const testimonialStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "testimonials",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    transformation: [{ quality: "auto" }, { fetch_format: "auto" }],
+  },
 });
-exports.uploadSchemeImages = multer({
-  storage: makeStorage("schemes"),
-  fileFilter: imageFilter,
+const uploadTestimonialImages = multer({ storage: testimonialStorage });
+
+// ================= Launch Media Upload =================
+const launchStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "launch",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "mp4", "mov"],
+    resource_type: "auto", // ✅ supports images & videos
+  },
 });
-exports.uploadTestimonialImages = multer({
-  storage: makeStorage("testimonials"),
-  fileFilter: imageFilter,
+const uploadLaunchMedia = multer({ storage: launchStorage });
+
+// ================= Service Icons Upload =================
+const serviceIconStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "services",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "svg"],
+    transformation: [{ quality: "auto" }, { fetch_format: "auto" }],
+  },
 });
-exports.uploadLaunchMedia = multer({ storage: makeStorage("launches") }); // allow any media
-exports.uploadServiceIcons = multer({
-  storage: makeStorage("services"),
-  fileFilter: imageFilter,
+const uploadServiceIcons = multer({ storage: serviceIconStorage });
+
+// ================= Misc Upload =================
+const miscStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "misc",
+    allowed_formats: ["jpg", "jpeg", "png", "pdf", "webp"],
+    resource_type: "auto", // ✅ supports both docs & images
+  },
 });
-exports.uploadMisc = multer({ storage: makeStorage("misc") });
+const uploadMisc = multer({ storage: miscStorage });
+
+// ================= EXPORTS =================
+module.exports = {
+  uploadProductMedia,
+  uploadSchemeImages,
+  uploadTestimonialImages,
+  uploadLaunchMedia,
+  uploadServiceIcons,
+  uploadMisc,
+};

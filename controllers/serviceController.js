@@ -1,37 +1,89 @@
-const Service = require("../models/Service");
-const Resp = require("../utils/response");
+import Service from "../models/Service.js";
+import { ok, created, bad } from "../utils/response.js";
+import { cloudinary } from "../utils/cloudinary.js";
 
-exports.create = async (req, res) => {
+export const create = async (req, res) => {
   try {
-    const icon = req.file ? req.file.path.replace(/.*uploads/, "uploads") : undefined;
+    let icon;
+
+    if (req.file) {
+      // Upload to cloudinary
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "services",
+        resource_type: "image",
+      });
+      icon = result.secure_url;
+    }
+
     const doc = await Service.create({ ...req.body, icon });
-    return Resp.created(res, doc, "Service created");
-  } catch (e) { return Resp.bad(res, e.message, 400); }
+    return created(res, doc, "Service created");
+  } catch (e) {
+    console.error("Service create error:", e);
+    return bad(res, e.message, 400);
+  }
 };
 
-exports.list = async (req, res) => {
+export const list = async (req, res) => {
   const items = await Service.find().sort({ createdAt: -1 });
-  return Resp.ok(res, items);
+  return ok(res, items);
 };
 
-exports.get = async (req, res) => {
+export const get = async (req, res) => {
   const item = await Service.findById(req.params.id);
-  if (!item) return Resp.bad(res, "Not found", 404);
-  return Resp.ok(res, item);
+  if (!item) return bad(res, "Not found", 404);
+  return ok(res, item);
 };
 
-exports.update = async (req, res) => {
+export const update = async (req, res) => {
   try {
-    const update = { ...req.body };
-    if (req.file) update.icon = req.file.path.replace(/.*uploads/, "uploads");
-    const item = await Service.findByIdAndUpdate(req.params.id, update, { new: true });
-    if (!item) return Resp.bad(res, "Not found", 404);
-    return Resp.ok(res, item, "Updated");
-  } catch (e) { return Resp.bad(res, e.message, 400); }
+    const { id } = req.params;
+    const service = await Service.findById(id);
+    if (!service) return bad(res, "Not found", 404);
+
+    // Update fields
+    if (req.body.title) service.title = req.body.title;
+    if (req.body.description) service.description = req.body.description;
+    if (req.body.status) service.status = req.body.status;
+
+    // If new file uploaded, replace icon in Cloudinary
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "services",
+        resource_type: "image",
+      });
+      service.icon = result.secure_url;
+    }
+
+    await service.save();
+    return ok(res, service, "Updated");
+  } catch (e) {
+    console.error("Service update error:", e);
+    return bad(res, e.message, 400);
+  }
 };
 
-exports.remove = async (req, res) => {
-  const item = await Service.findByIdAndDelete(req.params.id);
-  if (!item) return Resp.bad(res, "Not found", 404);
-  return Resp.ok(res, {}, "Deleted");
+export const remove = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const service = await Service.findById(id);
+    if (!service) return bad(res, "Not found", 404);
+
+    // Optionally delete icon from Cloudinary
+    if (service.icon && service.icon.includes("cloudinary.com")) {
+      const parts = service.icon.split("/");
+      const filename = parts[parts.length - 1];
+      const publicId = `services/${filename.split(".")[0]}`;
+      try {
+        await cloudinary.uploader.destroy(publicId, { resource_type: "image" });
+      } catch (err) {
+        console.warn("Cloudinary delete failed:", err.message);
+      }
+    }
+
+    await service.deleteOne();
+    return ok(res, {}, "Deleted");
+  } catch (e) {
+    console.error("Service delete error:", e);
+    return bad(res, e.message || e, 500);
+  }
 };
