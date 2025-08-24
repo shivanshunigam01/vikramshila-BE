@@ -103,24 +103,21 @@ export const update = async (req, res) => {
 };
 
 export const remove = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!id) return bad(res, "Scheme ID is required", 400);
+  const item = await Product.findById(req.params.id);
+  if (!item) return bad(res, "Not found", 404);
 
-    const item = await Scheme.findById(id);
-    if (!item) return bad(res, "Not found", 404);
-
-    // Delete photos from Cloudinary
-    for (const photo of item.photos || []) {
-      if (photo.public_id) {
-        await cloudinary.uploader.destroy(photo.public_id);
-      }
+  // Delete media from Cloudinary
+  for (const img of item.images || []) {
+    if (img.public_id) {
+      await cloudinary.uploader.destroy(img.public_id);
     }
-
-    await item.deleteOne();
-    return ok(res, {}, "Deleted");
-  } catch (e) {
-    console.error("Scheme delete error:", e);
-    return bad(res, e.message || e, 500);
   }
+  if (item.brochureFile?.public_id) {
+    await cloudinary.uploader.destroy(item.brochureFile.public_id, {
+      resource_type: "raw",
+    });
+  }
+
+  await item.deleteOne();
+  return ok(res, {}, "Deleted");
 };
