@@ -13,7 +13,7 @@ const app = express();
 app.use(morgan("dev"));
 app.use(
   cors({
-    origin: ["http://localhost:8080", "http://34.68.6.114:8081"], // multiple origins allowed
+    origin: ["http://localhost:8080", "http://34.68.6.114:8081","https://www.vikramshilaautomobiles.com","https://www.vikramshilaautomobiles.com/"], // multiple origins allowed
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true, // allow sending Authorization headers or cookies
