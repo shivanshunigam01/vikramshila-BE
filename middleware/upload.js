@@ -15,6 +15,19 @@ const productImageStorage = new CloudinaryStorage({
   },
 });
 
+const genericStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    return {
+      folder: "attachments", // you can change folder name
+      resource_type: "auto", // auto => supports images, videos, pdf, docs
+      public_id: `${Date.now()}-${file.originalname.split(".")[0]}`, // unique name
+    };
+  },
+});
+
+const uploadSingle = (fieldName) =>
+  multer({ storage: genericStorage }).single(fieldName);
 // Brochure (Local disk storage)
 const brochureDiskStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -111,6 +124,16 @@ const miscStorage = new CloudinaryStorage({
 });
 const uploadMisc = multer({ storage: miscStorage });
 
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "banners", // Cloudinary folder name
+    allowed_formats: ["jpg", "png", "jpeg", "webp"],
+  },
+});
+
+const upload = multer({ storage });
+
 // ================= EXPORTS =================
 module.exports = {
   uploadProductMedia,
@@ -119,4 +142,6 @@ module.exports = {
   uploadLaunchMedia,
   uploadServiceIcons,
   uploadMisc,
+  uploadSingle,
+  upload,
 };

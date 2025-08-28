@@ -9,6 +9,11 @@ const productSchema = new mongoose.Schema(
     images: [{ type: String }],
     brochureFile: { type: String },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
+
+    // ✅ Vehicle/Specification fields
+    gvw: { type: String }, // e.g. "3490 kg"
+    engine: { type: String }, // e.g. "2956 CC"
+    fuelTankCapacity: { type: String }, // e.g. "2 cylinders, 90L water capacity"
   },
   { timestamps: true }
 );

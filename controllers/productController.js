@@ -29,6 +29,9 @@ export const create = async (req, res) => {
     const product = await Product.create({
       ...req.body,
       category: req.body.category, // ✅ passed from body
+      gvw: req.body.gvw, // ✅ new fields
+      engine: req.body.engine,
+      fuelTankCapacity: req.body.fuelTankCapacity,
       images,
       brochureFile,
     });
@@ -63,23 +66,27 @@ export const update = async (req, res) => {
     if (req.body.title) product.title = req.body.title;
     if (req.body.description) product.description = req.body.description;
 
-    // ✅ keep price as string (like "3.99 Lakh")
+    // ✅ keep price as string
     if (req.body.price !== undefined && req.body.price !== "") {
       product.price = String(req.body.price).trim();
     }
 
+    // ✅ Update new fields
+    if (req.body.gvw) product.gvw = req.body.gvw;
+    if (req.body.engine) product.engine = req.body.engine;
+    if (req.body.fuelTankCapacity)
+      product.fuelTankCapacity = req.body.fuelTankCapacity;
+
     // Handle images upload (Cloudinary → URL only)
     if (req.files?.images) {
-      product.images = req.files.images.map((f) => f.path); // only URLs
+      product.images = req.files.images.map((f) => f.path);
     } else if (req.body.images) {
-      // if frontend sends array of objects → extract URL
       try {
         const parsedImages = JSON.parse(req.body.images);
         product.images = parsedImages.map((img) =>
           typeof img === "string" ? img : img.url
         );
       } catch {
-        // fallback if it's already array of strings
         product.images = Array.isArray(req.body.images)
           ? req.body.images
           : [req.body.images];

@@ -13,7 +13,13 @@ const app = express();
 app.use(morgan("dev"));
 app.use(
   cors({
-    origin: ["http://localhost:8080", "http://34.68.6.114:8081","https://www.vikramshilaautomobiles.com","https://www.vikramshilaautomobiles.com/"], // multiple origins allowed
+    origin: [
+      "http://localhost:8080",
+      "http://localhost:8081",
+      "http://34.68.6.114:8081",
+      "https://www.vikramshilaautomobiles.com",
+      "https://www.vikramshilaautomobiles.com/",
+    ], // multiple origins allowed
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true, // allow sending Authorization headers or cookies
@@ -41,7 +47,6 @@ for (const dir of subdirs) {
 // Static files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-
 // Routes
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/products", require("./routes/productRoutes"));
@@ -52,6 +57,9 @@ app.use("/api/services", require("./routes/serviceRoutes"));
 app.use("/api/enquiries", require("./routes/enquiryRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/upload", require("./routes/uploadRoutes"));
+app.use("/api/service-booking", require("./routes/serviceBookingRoutes"));
+app.use("/api/otp", require("./routes/otpRoutes"));
+app.use("/api/banners", require("./routes/bannerRoutes"));
 
 // Health check
 app.get("/", (req, res) =>
