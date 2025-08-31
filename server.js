@@ -19,7 +19,6 @@ app.use(
       "http://34.68.6.114:8081",
       "https://www.vikramshilaautomobiles.com",
       "https://www.vikramshilaautomobiles.com/",
-      "https://vikramshila-admin-panel.vercel.app/",
       "https://vikramshila-admin-panel.vercel.app",
     ], // multiple origins allowed
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
