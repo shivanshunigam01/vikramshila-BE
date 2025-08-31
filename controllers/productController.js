@@ -5,35 +5,119 @@ import { cloudinary } from "../utils/cloudinary.js";
 
 export const create = async (req, res) => {
   try {
-    // ✅ Keep price as string directly
+    // ✅ Ensure price is always string
     if (req.body.price !== undefined && req.body.price !== "") {
       req.body.price = String(req.body.price).trim();
-    } else {
-      delete req.body.price;
     }
 
-    // Rename name -> title
-    if (req.body.name) {
-      req.body.title = req.body.name;
-      delete req.body.name;
-    }
-
-    // Images from Cloudinary
+    // ✅ Product images (Cloudinary)
     const images = (req.files?.images || []).map((f) => f.path);
 
-    // Brochure from local upload folder
+    // ✅ Reviews (Cloudinary)
+    let reviews = [];
+    if (req.files?.reviewFiles) {
+      reviews = req.files.reviewFiles.map((f, i) => ({
+        type: f.mimetype.startsWith("video") ? "video" : "photo",
+        content: req.body.reviews?.[i]?.content || "",
+        customerName: req.body.reviews?.[i]?.customerName || "",
+        customerLocation: req.body.reviews?.[i]?.customerLocation || "",
+        rating: req.body.reviews?.[i]?.rating || null,
+        file: f.path,
+      }));
+    } else if (req.body.reviews) {
+      try {
+        const parsedReviews = JSON.parse(req.body.reviews);
+        reviews = parsedReviews.map((r) => ({
+          type: r.type || "photo",
+          content: r.content || "",
+          customerName: r.customerName || "",
+          customerLocation: r.customerLocation || "",
+          rating: r.rating || null,
+          file: r.file || null,
+        }));
+      } catch {
+        reviews = Array.isArray(req.body.reviews)
+          ? req.body.reviews
+          : [req.body.reviews];
+      }
+    }
+
+    // ✅ Testimonials (Cloudinary)
+    let testimonials = [];
+    if (req.files?.testimonialFiles) {
+      testimonials = req.files.testimonialFiles.map((f, i) => ({
+        type: f.mimetype.startsWith("video") ? "video" : "photo",
+        content: req.body.testimonials?.[i]?.content || "",
+        customerName: req.body.testimonials?.[i]?.customerName || "",
+        customerLocation: req.body.testimonials?.[i]?.customerLocation || "",
+        customerDesignation:
+          req.body.testimonials?.[i]?.customerDesignation || "",
+        file: f.path,
+      }));
+    } else if (req.body.testimonials) {
+      try {
+        const parsedTestimonials = JSON.parse(req.body.testimonials);
+        testimonials = parsedTestimonials.map((t) => ({
+          type: t.type || "photo",
+          content: t.content || "",
+          customerName: t.customerName || "",
+          customerLocation: t.customerLocation || "",
+          customerDesignation: t.customerDesignation || "",
+          file: t.file || null,
+        }));
+      } catch {
+        testimonials = Array.isArray(req.body.testimonials)
+          ? req.body.testimonials
+          : [req.body.testimonials];
+      }
+    }
+
+    // ✅ Brochure (Cloudinary OR local)
     const brochureFile = req.files?.brochureFile
-      ? req.files.brochureFile[0].path.replace(/.*uploads/, "/uploads")
+      ? req.files.brochureFile[0].path
       : undefined;
 
+    // ✅ Create product with all fields from frontend
     const product = await Product.create({
-      ...req.body,
-      category: req.body.category, // ✅ passed from body
-      gvw: req.body.gvw, // ✅ new fields
-      engine: req.body.engine,
-      fuelTankCapacity: req.body.fuelTankCapacity,
+      title: req.body.title || "",
+      description: req.body.description || "",
+      category: req.body.category || "",
+      price: req.body.price || "",
+      status: req.body.status || "active",
+
+      // Vehicle Specs
+      gvw: req.body.gvw || "",
+      engine: req.body.engine || "",
+      fuelType: req.body.fuelType || "",
+      gearBox: req.body.gearBox || "",
+      clutchDia: req.body.clutchDia || "",
+      torque: req.body.torque || "",
+      tyre: req.body.tyre || "",
+      fuelTankCapacity: req.body.fuelTankCapacity || "",
+      cabinType: req.body.cabinType || "",
+      warranty: req.body.warranty || "",
+      applicationSuitability: req.body.applicationSuitability || "",
+      payload: req.body.payload || "",
+      deckWidth: Array.isArray(req.body.deckWidth)
+        ? req.body.deckWidth
+        : [req.body.deckWidth].filter(Boolean),
+      deckLength: Array.isArray(req.body.deckLength)
+        ? req.body.deckLength
+        : [req.body.deckLength].filter(Boolean),
+      bodyDimensions: req.body.bodyDimensions || "",
+      tco: req.body.tco || "",
+      profitMargin: req.body.profitMargin || "",
+      usp: Array.isArray(req.body.usp)
+        ? req.body.usp
+        : [req.body.usp].filter(Boolean),
+
+      // Files
       images,
       brochureFile,
+
+      // Reviews & Testimonials
+      reviews,
+      testimonials,
     });
 
     return res.status(201).json({ message: "Product created", product });
@@ -62,47 +146,116 @@ export const update = async (req, res) => {
     const product = await Product.findById(id);
     if (!product) return bad(res, "Product not found");
 
-    // Update basic fields
-    if (req.body.title) product.title = req.body.title;
-    if (req.body.description) product.description = req.body.description;
-
-    // ✅ keep price as string
     if (req.body.price !== undefined && req.body.price !== "") {
-      product.price = String(req.body.price).trim();
+      req.body.price = String(req.body.price).trim();
     }
 
-    // ✅ Update new fields
-    if (req.body.gvw) product.gvw = req.body.gvw;
-    if (req.body.engine) product.engine = req.body.engine;
-    if (req.body.fuelTankCapacity)
-      product.fuelTankCapacity = req.body.fuelTankCapacity;
+    // Product images
+    const images = (req.files?.images || []).map((f) => f.path);
 
-    // Handle images upload (Cloudinary → URL only)
-    if (req.files?.images) {
-      product.images = req.files.images.map((f) => f.path);
-    } else if (req.body.images) {
+    // Reviews
+    let reviews = [];
+    if (req.files?.reviewFiles) {
+      reviews = req.files.reviewFiles.map((f, i) => ({
+        type: f.mimetype.startsWith("video") ? "video" : "photo",
+        content: req.body.reviews?.[i]?.content || "",
+        customerName: req.body.reviews?.[i]?.customerName || "",
+        customerLocation: req.body.reviews?.[i]?.customerLocation || "",
+        rating: req.body.reviews?.[i]?.rating || null,
+        file: f.path,
+      }));
+    } else if (req.body.reviews) {
       try {
-        const parsedImages = JSON.parse(req.body.images);
-        product.images = parsedImages.map((img) =>
-          typeof img === "string" ? img : img.url
-        );
+        const parsedReviews = JSON.parse(req.body.reviews);
+        reviews = parsedReviews.map((r) => ({
+          type: r.type || "photo",
+          content: r.content || "",
+          customerName: r.customerName || "",
+          customerLocation: r.customerLocation || "",
+          rating: r.rating || null,
+          file: r.file || null,
+        }));
       } catch {
-        product.images = Array.isArray(req.body.images)
-          ? req.body.images
-          : [req.body.images];
+        reviews = Array.isArray(req.body.reviews)
+          ? req.body.reviews
+          : [req.body.reviews];
       }
     }
 
-    // Handle brochure upload (local server path)
-    if (req.files?.brochureFile) {
-      product.brochureFile = req.files.brochureFile[0].path.replace(
-        /.*uploads/,
-        "/uploads"
-      );
+    // Testimonials
+    let testimonials = [];
+    if (req.files?.testimonialFiles) {
+      testimonials = req.files.testimonialFiles.map((f, i) => ({
+        type: f.mimetype.startsWith("video") ? "video" : "photo",
+        content: req.body.testimonials?.[i]?.content || "",
+        customerName: req.body.testimonials?.[i]?.customerName || "",
+        customerLocation: req.body.testimonials?.[i]?.customerLocation || "",
+        customerDesignation:
+          req.body.testimonials?.[i]?.customerDesignation || "",
+        file: f.path,
+      }));
+    } else if (req.body.testimonials) {
+      try {
+        const parsedTestimonials = JSON.parse(req.body.testimonials);
+        testimonials = parsedTestimonials.map((t) => ({
+          type: t.type || "photo",
+          content: t.content || "",
+          customerName: t.customerName || "",
+          customerLocation: t.customerLocation || "",
+          customerDesignation: t.customerDesignation || "",
+          file: t.file || null,
+        }));
+      } catch {
+        testimonials = Array.isArray(req.body.testimonials)
+          ? req.body.testimonials
+          : [req.body.testimonials];
+      }
     }
 
+    const brochureFile = req.files?.brochureFile
+      ? req.files.brochureFile[0].path
+      : product.brochureFile;
+
+    // ✅ Assign all fields
+    Object.assign(product, {
+      title: req.body.title || product.title,
+      description: req.body.description || product.description,
+      category: req.body.category || product.category,
+      price: req.body.price || product.price,
+      status: req.body.status || product.status,
+
+      gvw: req.body.gvw || product.gvw,
+      engine: req.body.engine || product.engine,
+      fuelType: req.body.fuelType || product.fuelType,
+      gearBox: req.body.gearBox || product.gearBox,
+      clutchDia: req.body.clutchDia || product.clutchDia,
+      torque: req.body.torque || product.torque,
+      tyre: req.body.tyre || product.tyre,
+      fuelTankCapacity: req.body.fuelTankCapacity || product.fuelTankCapacity,
+      cabinType: req.body.cabinType || product.cabinType,
+      warranty: req.body.warranty || product.warranty,
+      applicationSuitability:
+        req.body.applicationSuitability || product.applicationSuitability,
+      payload: req.body.payload || product.payload,
+      deckWidth: Array.isArray(req.body.deckWidth)
+        ? req.body.deckWidth
+        : product.deckWidth,
+      deckLength: Array.isArray(req.body.deckLength)
+        ? req.body.deckLength
+        : product.deckLength,
+      bodyDimensions: req.body.bodyDimensions || product.bodyDimensions,
+      tco: req.body.tco || product.tco,
+      profitMargin: req.body.profitMargin || product.profitMargin,
+      usp: Array.isArray(req.body.usp) ? req.body.usp : product.usp,
+
+      images: images.length ? images : product.images,
+      brochureFile: brochureFile,
+      reviews: reviews.length ? reviews : product.reviews,
+      testimonials: testimonials.length ? testimonials : product.testimonials,
+    });
+
     await product.save();
-    return ok(res, "Product updated successfully", product);
+    return ok(res, product, "Product updated successfully");
   } catch (error) {
     console.error(error);
     return bad(res, "Failed to update product");
@@ -113,12 +266,13 @@ export const remove = async (req, res) => {
   const item = await Product.findById(req.params.id);
   if (!item) return bad(res, "Not found", 404);
 
-  // Delete media from Cloudinary
+  // Optional: Delete images from Cloudinary if you stored public_id
   for (const img of item.images || []) {
     if (img.public_id) {
       await cloudinary.uploader.destroy(img.public_id);
     }
   }
+
   if (item.brochureFile?.public_id) {
     await cloudinary.uploader.destroy(item.brochureFile.public_id, {
       resource_type: "raw",

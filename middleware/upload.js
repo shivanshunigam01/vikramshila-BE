@@ -39,34 +39,27 @@ const brochureDiskStorage = multer.diskStorage({
     const ext = path.extname(file.originalname);
     cb(null, `${Date.now()}-${file.fieldname}${ext}`);
   },
+}); // ================= Product Media Upload =================
+const productMediaStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    let folder = "products"; // default
+    if (file.fieldname.startsWith("reviewFiles")) folder = "reviews";
+    if (file.fieldname.startsWith("testimonialFiles")) folder = "testimonials";
+
+    return {
+      folder,
+      resource_type: "auto", // ✅ auto handles images + videos
+      public_id: `${Date.now()}-${file.originalname.split(".")[0]}`,
+    };
+  },
 });
 
-// ✅ Custom storage to handle both images (Cloudinary) + brochure (local)
-const productMediaStorage = {
-  _handleFile(req, file, cb) {
-    if (/^image\//.test(file.mimetype)) {
-      // send images to Cloudinary
-      return productImageStorage._handleFile(req, file, cb);
-    } else if (file.mimetype === "application/pdf") {
-      // save brochure locally
-      return brochureDiskStorage._handleFile(req, file, cb);
-    }
-    cb(new Error("Only image or PDF files are allowed!"));
-  },
-  _removeFile(req, file, cb) {
-    if (/^image\//.test(file.mimetype)) {
-      return productImageStorage._removeFile(req, file, cb);
-    } else if (file.mimetype === "application/pdf" && file.path) {
-      fs.unlink(file.path, cb);
-    } else {
-      cb();
-    }
-  },
-};
-
-uploadProductMedia = multer({ storage: productMediaStorage }).fields([
+const uploadProductMedia = multer({ storage: productMediaStorage }).fields([
   { name: "images", maxCount: 10 },
-  { name: "brochureFile", maxCount: 1 },
+  { name: "reviewFiles", maxCount: 10 },
+  { name: "testimonialFiles", maxCount: 10 },
+  { name: "brochureFile", maxCount: 1 }, // stays local if you want, else switch to Cloudinary
 ]);
 
 // ================= Scheme Media Upload =================
