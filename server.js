@@ -17,6 +17,7 @@ app.use(
       "http://localhost:8080",
       "http://localhost:8081",
       "http://34.68.6.114:8081",
+      "http://34.68.6.114:8081/",
       "https://www.vikramshilaautomobiles.com",
       "https://www.vikramshilaautomobiles.com/",
       "https://vikramshila-admin-panel.vercel.app",
