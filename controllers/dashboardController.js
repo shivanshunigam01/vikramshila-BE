@@ -1,19 +1,25 @@
-const Product = require("../models/Product");
-const Scheme = require("../models/Scheme");
-const Service = require("../models/Service");
-const Enquiry = require("../models/Enquiry");
-const Launch = require("../models/Launch");
-const Testimonial = require("../models/Testimonial");
-const RES = require("../utils/response");
+import Product from "../models/Product.js";
+import Scheme from "../models/Scheme.js";
+import Service from "../models/Service.js";
+import Enquiry from "../models/Enquiry.js";
+import Launch from "../models/Launch.js";
+import Testimonial from "../models/Testimonial.js";
+import { ok, created, bad, error } from "../utils/response.js";
 
-exports.stats = async (req, res) => {
-  const [products, schemes, services, enquiries, launches, testimonials] = await Promise.all([
-    Product.countDocuments(),
-    Scheme.countDocuments(),  
-    Service.countDocuments(),
-    Enquiry.countDocuments(),
-    Launch.countDocuments(),
-    Testimonial.countDocuments(),
-  ]);
-  return RES.ok(res, { products, schemes, services, enquiries, launches, testimonials });
+export const stats = async (req, res) => {
+  try {
+    const [products, schemes, services, enquiries, launches, testimonials] =
+      await Promise.all([
+        Product.countDocuments(),
+        Scheme.countDocuments(),
+        Service.countDocuments(),
+        Enquiry.countDocuments(),
+        Launch.countDocuments(),
+        Testimonial.countDocuments(),
+      ]);
+
+    return ok(res, { products, schemes, services, enquiries, launches, testimonials });
+  } catch (err) {
+    return error(res, err);
+  }
 };
