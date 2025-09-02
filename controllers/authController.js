@@ -112,20 +112,12 @@ export const registerCustomer = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // Check if user already exists
-    const existingUser = await Customer.findOne({ email });
-    if (existingUser) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email already registered" });
-    }
-
-    // Create user with plain password
+    // Directly create user without checking existing email
     const newCustomer = new Customer({
       name,
       email,
       phone,
-      password, // ✅ DO NOT hash manually
+      password, // plain password
     });
 
     await newCustomer.save();
