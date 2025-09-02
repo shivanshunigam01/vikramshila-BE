@@ -21,10 +21,11 @@ app.use(
       "https://www.vikramshilaautomobiles.com",
       "https://www.vikramshilaautomobiles.com/",
       "https://vikramshila-admin-panel.vercel.app",
-    ], // multiple origins allowed
+      "",
+    ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true, // allow sending Authorization headers or cookies
+    credentials: true,
   })
 );
 app.use(express.json({ limit: "10mb" }));
@@ -59,8 +60,9 @@ app.use("/api/services", require("./routes/serviceRoutes"));
 app.use("/api/enquiries", require("./routes/enquiryRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 app.use("/api/upload", require("./routes/uploadRoutes"));
+app.use("/api/leads", require("./routes/leadRoutes")); // ✅ FIXED: using here
 app.use("/api/service-booking", require("./routes/serviceBookingRoutes"));
-app.use("/api/otp", require("./routes/otpRoutes"));
+// app.use("/api/otp", require("./routes/otpRoutes"));
 app.use("/api/banners", require("./routes/bannerRoutes"));
 
 // Health check
@@ -71,6 +73,7 @@ app.get("/", (req, res) =>
 // DB connect & start
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/vikramshila";
+
 mongoose
   .connect(MONGODB_URI)
   .then(() => {

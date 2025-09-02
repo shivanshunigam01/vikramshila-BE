@@ -24,5 +24,7 @@ router.put(
   ctrl.update
 );
 router.delete("/:id", protect, restrict("admin"), ctrl.remove);
+// 🔹 Filter products
+router.post("/filter", ctrl.filterProducts);
 
 module.exports = router;

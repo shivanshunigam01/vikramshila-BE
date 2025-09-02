@@ -282,3 +282,51 @@ export const remove = async (req, res) => {
   await item.deleteOne();
   return ok(res, {}, "Deleted");
 };
+
+// 🔹 Filter Products
+
+export const filterProducts = async (req, res) => {
+  try {
+    const { application, fuelType, tonnage, priceRange } = req.body;
+
+    let orConditions = [];
+
+    if (application && application.toLowerCase() !== "all") {
+      orConditions.push({
+        applicationSuitability: { $regex: application, $options: "i" },
+      });
+    }
+
+    if (fuelType && fuelType.toLowerCase() !== "all") {
+      orConditions.push({ fuelType: { $regex: fuelType, $options: "i" } });
+    }
+
+    if (tonnage && tonnage.toLowerCase() !== "all") {
+      orConditions.push({ gvw: { $regex: tonnage, $options: "i" } });
+    }
+
+    if (priceRange && priceRange.toLowerCase() !== "all") {
+      const parts = priceRange.split("-");
+      if (parts.length === 2) {
+        const [minStr, maxStr] = parts;
+        const min = minStr.trim();
+        const max = maxStr.trim();
+        orConditions.push({ price: { $regex: min, $options: "i" } });
+        orConditions.push({ price: { $regex: max, $options: "i" } });
+      }
+    }
+
+    const filter = orConditions.length > 0 ? { $or: orConditions } : {};
+
+    const products = await Product.find(filter).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      totalProducts: products.length,
+      data: products,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
