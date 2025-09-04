@@ -62,6 +62,7 @@ const productSchema = new mongoose.Schema(
     deckLength: [String],
     bodyDimensions: String,
     tco: String,
+    newLaunch: { type: Number, enum: [0, 1], default: 0 },
     profitMargin: String,
     usp: [String],
   },

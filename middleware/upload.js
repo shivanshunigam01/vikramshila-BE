@@ -168,15 +168,66 @@ const testimonialStorage = new CloudinaryStorage({
 const uploadTestimonialImages = multer({ storage: testimonialStorage });
 
 // Launch Media Upload
-const launchStorage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "launch",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "mp4", "mov"],
-    resource_type: "auto",
-  },
-});
-const uploadLaunchMedia = multer({ storage: launchStorage });
+const launchUpload = multer({
+  storage: multer.memoryStorage(),
+}).fields([
+  { name: "mediaFiles", maxCount: 10 },
+  { name: "brochureFile", maxCount: 1 },
+]);
+
+const uploadLaunchMedia = (req, res, next) => {
+  launchUpload(req, res, async (err) => {
+    if (err) return next(err);
+
+    try {
+      // 🔹 Cloudinary upload for media files
+      if (req.files?.mediaFiles) {
+        const uploadPromises = req.files.mediaFiles.map((file) => {
+          return new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+              {
+                folder: "launch",
+                resource_type: "auto",
+                public_id: `${Date.now()}-${file.originalname.split(".")[0]}`,
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else {
+                  file.path = result.secure_url;
+                  file.public_id = result.public_id;
+                  resolve(result);
+                }
+              }
+            );
+            uploadStream.end(file.buffer);
+          });
+        });
+
+        await Promise.all(uploadPromises);
+      }
+
+      // 🔹 Local disk upload for brochure
+      if (req.files?.brochureFile && req.files.brochureFile[0]) {
+        const brochureFile = req.files.brochureFile[0];
+        const uploadsDir = path.join(__dirname, "../uploads/brochures");
+        fs.mkdirSync(uploadsDir, { recursive: true });
+
+        const ext = path.extname(brochureFile.originalname);
+        const filename = `${Date.now()}-launch-brochure${ext}`;
+        const filepath = path.join(uploadsDir, filename);
+
+        fs.writeFileSync(filepath, brochureFile.buffer);
+
+        brochureFile.filename = filename;
+        brochureFile.path = filepath;
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+};
 
 // Service Icons Upload
 const serviceIconStorage = new CloudinaryStorage({
@@ -212,7 +263,6 @@ const upload = multer({ storage });
 
 // ================= EXPORTS =================
 module.exports = {
-  uploadProductMedia: handleMixedUpload, // ✅ Updated to use mixed upload
   uploadSchemeImages,
   uploadTestimonialImages,
   uploadLaunchMedia,
@@ -220,4 +270,5 @@ module.exports = {
   uploadMisc,
   uploadSingle,
   upload,
+  uploadProductMedia: handleMixedUpload,
 };

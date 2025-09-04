@@ -1,14 +1,24 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const launchSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
-    description: { type: String },
-    launchDate: { type: Date },
-    mediaFiles: [{ type: String }],
+    description: String,
+    launchDate: Date,
+    mediaFiles: [String],
+
+    // ✅ Brochure file (LOCAL DISK)
+    brochureFile: {
+      filename: String,
+      originalName: String,
+      path: String,
+      size: Number,
+      mimetype: String,
+    },
+
     status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Launch", launchSchema);
+export default mongoose.model("Launch", launchSchema);

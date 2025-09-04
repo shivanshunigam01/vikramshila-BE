@@ -98,6 +98,8 @@ export const create = async (req, res) => {
       category: req.body.category || "",
       price: req.body.price || "",
       status: req.body.status || "active",
+      // ✅ Add this line
+      newLaunch: req.body.newLaunch === "1" || req.body.newLaunch === 1 ? 1 : 0,
 
       // Vehicle Specs
       gvw: req.body.gvw || "",
@@ -259,6 +261,12 @@ export const update = async (req, res) => {
       category: req.body.category || product.category,
       price: req.body.price || product.price,
       status: req.body.status || product.status,
+      newLaunch:
+        req.body.newLaunch !== undefined
+          ? req.body.newLaunch === "1" || req.body.newLaunch === 1
+            ? 1
+            : 0
+          : product.newLaunch,
 
       gvw: req.body.gvw || product.gvw,
       engine: req.body.engine || product.engine,
@@ -356,7 +364,7 @@ export const downloadBrochure = async (req, res) => {
 
 export const filterProducts = async (req, res) => {
   try {
-    const { application, fuelType, payload, priceRange } = req.body; // 👈 changed tonnage → payload
+    const { application, fuelType, payload, priceRange } = req.body;
 
     let andConditions = [];
 
@@ -372,30 +380,86 @@ export const filterProducts = async (req, res) => {
       andConditions.push({ fuelType: { $regex: fuelType, $options: "i" } });
     }
 
-    // 🔹 Payload filter
+    // 🔹 Payload filter (expecting "750-1500" or "12000+")
     if (payload && payload.toLowerCase() !== "all") {
-      andConditions.push({ payload: { $regex: payload, $options: "i" } });
-    }
-
-    // 🔹 Price Range filter (expecting "100000 - 500000")
-    if (priceRange && priceRange.toLowerCase() !== "all") {
-      const parts = priceRange.split("-");
-      if (parts.length === 2) {
-        const [minStr, maxStr] = parts;
+      if (payload.includes("-")) {
+        const [minStr, maxStr] = payload.split("-");
         const min = parseInt(minStr.trim(), 10);
         const max = parseInt(maxStr.trim(), 10);
 
         if (!isNaN(min) && !isNaN(max)) {
           andConditions.push({
-            price: {
-              $gte: min.toString(),
-              $lte: max.toString(),
+            $expr: {
+              $and: [
+                {
+                  $gte: [
+                    {
+                      $toInt: {
+                        $arrayElemAt: [{ $split: ["$payload", " "] }, 0],
+                      },
+                    },
+                    min,
+                  ],
+                },
+                {
+                  $lte: [
+                    {
+                      $toInt: {
+                        $arrayElemAt: [{ $split: ["$payload", " "] }, 0],
+                      },
+                    },
+                    max,
+                  ],
+                },
+              ],
+            },
+          });
+        }
+      } else if (payload.endsWith("+")) {
+        const min = parseInt(payload.replace("+", ""), 10);
+        if (!isNaN(min)) {
+          andConditions.push({
+            $expr: {
+              $gte: [
+                {
+                  $toInt: { $arrayElemAt: [{ $split: ["$payload", " "] }, 0] },
+                },
+                min,
+              ],
             },
           });
         }
       }
     }
 
+    // 🔹 Price Range filter (expecting "15-20L" or "30L+")
+    if (priceRange && priceRange.toLowerCase() !== "all") {
+      if (priceRange.includes("-")) {
+        const [minStr, maxStr] = priceRange.split("-");
+        const min = parseInt(minStr.replace("L", "").trim(), 10) * 100000;
+        const max = parseInt(maxStr.replace("L", "").trim(), 10) * 100000;
+
+        if (!isNaN(min) && !isNaN(max)) {
+          andConditions.push({
+            $expr: {
+              $and: [
+                { $gte: [{ $toInt: "$price" }, min] },
+                { $lte: [{ $toInt: "$price" }, max] },
+              ],
+            },
+          });
+        }
+      } else if (priceRange.endsWith("L+")) {
+        const min = parseInt(priceRange.replace("L+", "").trim(), 10) * 100000;
+        if (!isNaN(min)) {
+          andConditions.push({
+            $expr: { $gte: [{ $toInt: "$price" }, min] },
+          });
+        }
+      }
+    }
+
+    // ✅ Build filter
     const filter = andConditions.length > 0 ? { $and: andConditions } : {};
 
     const products = await Product.find(filter).sort({ createdAt: -1 });
