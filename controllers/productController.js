@@ -2,6 +2,12 @@
 import Product from "../models/Product.js";
 import { ok, created, bad } from "../utils/response.js";
 import { cloudinary } from "../utils/cloudinary.js";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const create = async (req, res) => {
   try {
@@ -72,10 +78,18 @@ export const create = async (req, res) => {
       }
     }
 
-    // ✅ Brochure (Cloudinary OR local)
-    const brochureFile = req.files?.brochureFile
-      ? req.files.brochureFile[0].path
-      : undefined;
+    // ✅ Brochure (Local disk storage) - NEW IMPLEMENTATION
+    let brochureFile = null;
+    if (req.files?.brochureFile && req.files.brochureFile[0]) {
+      const file = req.files.brochureFile[0];
+      brochureFile = {
+        filename: file.filename,
+        originalName: file.originalname,
+        path: file.path,
+        size: file.size,
+        mimetype: file.mimetype,
+      };
+    }
 
     // ✅ Create product with all fields from frontend
     const product = await Product.create({
@@ -212,9 +226,31 @@ export const update = async (req, res) => {
       }
     }
 
-    const brochureFile = req.files?.brochureFile
-      ? req.files.brochureFile[0].path
-      : product.brochureFile;
+    // ✅ Brochure handling - NEW IMPLEMENTATION
+    let brochureFile = product.brochureFile;
+    if (req.files?.brochureFile && req.files.brochureFile[0]) {
+      // Delete old brochure file if it exists
+      if (
+        product.brochureFile?.path &&
+        fs.existsSync(product.brochureFile.path)
+      ) {
+        try {
+          fs.unlinkSync(product.brochureFile.path);
+        } catch (error) {
+          console.warn("Failed to delete old brochure:", error.message);
+        }
+      }
+
+      // Set new brochure file
+      const file = req.files.brochureFile[0];
+      brochureFile = {
+        filename: file.filename,
+        originalName: file.originalname,
+        path: file.path,
+        size: file.size,
+        mimetype: file.mimetype,
+      };
+    }
 
     // ✅ Assign all fields
     Object.assign(product, {
@@ -266,25 +302,57 @@ export const remove = async (req, res) => {
   const item = await Product.findById(req.params.id);
   if (!item) return bad(res, "Not found", 404);
 
-  // Optional: Delete images from Cloudinary if you stored public_id
+  // Delete images from Cloudinary if you stored public_id
   for (const img of item.images || []) {
     if (img.public_id) {
       await cloudinary.uploader.destroy(img.public_id);
     }
   }
 
-  if (item.brochureFile?.public_id) {
-    await cloudinary.uploader.destroy(item.brochureFile.public_id, {
-      resource_type: "raw",
-    });
+  // Delete local brochure file
+  if (item.brochureFile?.path && fs.existsSync(item.brochureFile.path)) {
+    try {
+      fs.unlinkSync(item.brochureFile.path);
+    } catch (error) {
+      console.warn("Failed to delete brochure file:", error.message);
+    }
   }
 
   await item.deleteOne();
   return ok(res, {}, "Deleted");
 };
 
-// 🔹 Filter Products
+export const downloadBrochure = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product?.brochureFile?.path) {
+      return res.status(404).send("Brochure not found");
+    }
 
+    const filePath = path.resolve(product.brochureFile.path);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send("File does not exist");
+    }
+
+    // 🔹 Set proper headers for PDF
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${
+        product.brochureFile.originalName || "brochure.pdf"
+      }"`
+    );
+
+    // 🔹 Stream file
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+  } catch (err) {
+    console.error("Download error:", err);
+    res.status(500).send("Server error");
+  }
+};
+// 🔹 Filter Products
 export const filterProducts = async (req, res) => {
   try {
     const { application, fuelType, tonnage, priceRange } = req.body;

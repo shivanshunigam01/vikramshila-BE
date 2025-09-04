@@ -6,7 +6,7 @@ const productSchema = new mongoose.Schema(
     description: String,
     price: { type: String, default: "" },
 
-    // ✅ Images
+    // ✅ Images (Cloudinary URLs)
     images: [String],
 
     // ✅ Reviews
@@ -17,7 +17,7 @@ const productSchema = new mongoose.Schema(
         customerName: String,
         customerLocation: String,
         rating: Number,
-        file: String,
+        file: String, // Cloudinary URL
       },
     ],
 
@@ -29,13 +29,21 @@ const productSchema = new mongoose.Schema(
         customerName: String,
         customerLocation: String,
         customerDesignation: String,
-        file: String,
+        file: String, // Cloudinary URL
       },
     ],
 
-    // ✅ Brochure file
-    brochureFile: String,
+    // ✅ Brochure file (LOCAL STORAGE) - Updated Schema
+    brochureFile: {
+      filename: String, // Generated filename
+      originalName: String, // Original uploaded filename
+      path: String, // Full file path on server
+      size: Number, // File size in bytes
+      mimetype: String, // MIME type (e.g., 'application/pdf')
+    },
+
     status: { type: String, enum: ["active", "inactive"], default: "active" },
+    category: String,
 
     // ✅ Vehicle Specs
     gvw: String,

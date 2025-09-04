@@ -16,6 +16,7 @@ app.use(
     origin: [
       "http://localhost:8080",
       "http://localhost:8081",
+      "http://localhost:8082",
       "http://34.68.6.114:8081",
       "http://34.68.6.114:8081/",
       "https://www.vikramshilaautomobiles.com",

@@ -9,7 +9,7 @@ import bcrypt from "bcryptjs";
 
 dotenv.config();
 
-const client = twilio(
+const client = new twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
 );
@@ -93,12 +93,16 @@ export const sendOtp = async (req, res) => {
     const newOtp = new Otp({ phone, otp });
     await newOtp.save();
 
-    await client.messages.create({
-      body: `Your OTP for registering with VIKRAMSHILA AUTOMOBILES is: ${otp}. Do not share this code with anyone.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: phone,
-    });
-
+    try {
+      await client.messages.create({
+        body: `Your OTP for registering with VIKRAMSHILA AUTOMOBILES is: ${otp}. Do not share this code with anyone.`,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        to: phone,
+      });
+    } catch (err) {
+      console.error("Twilio Error:", err.message, err.code, err.moreInfo);
+      throw err;
+    }
     return res.status(200).json({ message: "OTP sent successfully" });
   } catch (error) {
     return res
