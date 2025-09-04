@@ -353,38 +353,50 @@ export const downloadBrochure = async (req, res) => {
   }
 };
 // 🔹 Filter Products
+
 export const filterProducts = async (req, res) => {
   try {
-    const { application, fuelType, tonnage, priceRange } = req.body;
+    const { application, fuelType, payload, priceRange } = req.body; // 👈 changed tonnage → payload
 
-    let orConditions = [];
+    let andConditions = [];
 
+    // 🔹 Application filter
     if (application && application.toLowerCase() !== "all") {
-      orConditions.push({
+      andConditions.push({
         applicationSuitability: { $regex: application, $options: "i" },
       });
     }
 
+    // 🔹 Fuel Type filter
     if (fuelType && fuelType.toLowerCase() !== "all") {
-      orConditions.push({ fuelType: { $regex: fuelType, $options: "i" } });
+      andConditions.push({ fuelType: { $regex: fuelType, $options: "i" } });
     }
 
-    if (tonnage && tonnage.toLowerCase() !== "all") {
-      orConditions.push({ gvw: { $regex: tonnage, $options: "i" } });
+    // 🔹 Payload filter
+    if (payload && payload.toLowerCase() !== "all") {
+      andConditions.push({ payload: { $regex: payload, $options: "i" } });
     }
 
+    // 🔹 Price Range filter (expecting "100000 - 500000")
     if (priceRange && priceRange.toLowerCase() !== "all") {
       const parts = priceRange.split("-");
       if (parts.length === 2) {
         const [minStr, maxStr] = parts;
-        const min = minStr.trim();
-        const max = maxStr.trim();
-        orConditions.push({ price: { $regex: min, $options: "i" } });
-        orConditions.push({ price: { $regex: max, $options: "i" } });
+        const min = parseInt(minStr.trim(), 10);
+        const max = parseInt(maxStr.trim(), 10);
+
+        if (!isNaN(min) && !isNaN(max)) {
+          andConditions.push({
+            price: {
+              $gte: min.toString(),
+              $lte: max.toString(),
+            },
+          });
+        }
       }
     }
 
-    const filter = orConditions.length > 0 ? { $or: orConditions } : {};
+    const filter = andConditions.length > 0 ? { $and: andConditions } : {};
 
     const products = await Product.find(filter).sort({ createdAt: -1 });
 
@@ -394,7 +406,7 @@ export const filterProducts = async (req, res) => {
       data: products,
     });
   } catch (error) {
-    console.error(error);
+    console.error("Filter error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

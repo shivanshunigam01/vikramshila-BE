@@ -65,6 +65,8 @@ app.use("/api/leads", require("./routes/leadRoutes")); // ✅ FIXED: using here
 app.use("/api/service-booking", require("./routes/serviceBookingRoutes"));
 // app.use("/api/otp", require("./routes/otpRoutes"));
 app.use("/api/banners", require("./routes/bannerRoutes"));
+app.use("/api/grievances", require("./routes/grievanceRoutes"));
+
 
 // Health check
 app.get("/", (req, res) =>

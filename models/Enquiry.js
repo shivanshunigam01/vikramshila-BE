@@ -7,6 +7,7 @@ const enquirySchema = new mongoose.Schema(
     state: { type: String },
     pincode: { type: String },
     product: { type: String },
+    briefDescription: { type: String }, // ✅ Added field
     whatsappConsent: { type: Boolean, default: false },
     contacted: { type: Boolean, default: false },
   },

@@ -1,6 +1,6 @@
 const Enquiry = require("../models/Enquiry");
-// const { sendMail } = require("../middleware/nodemailer");
 const RESP = require("../utils/response");
+const sendMail = require("../utils/sendMail");
 
 const dateFilter = (filter) => {
   const now = new Date();
@@ -19,22 +19,33 @@ const dateFilter = (filter) => {
 };
 
 exports.create = async (req, res) => {
-  //   try {
-  //     const doc = await Enquiry.create(req.body);
-  //     try {
-  //       await sendMail({
-  //         to: process.env.ADMIN_EMAIL,
-  //         subject: `New Enquiry from ${doc.fullName}`,
-  //         html: `<p><b>Name:</b> ${doc.fullName}</p>
-  //               <p><b>Mobile:</b> ${doc.mobileNumber}</p>
-  //               <p><b>State:</b> ${doc.state || ""}</p>
-  //               <p><b>Pincode:</b> ${doc.pincode || ""}</p>
-  //               <p><b>Product:</b> ${doc.product || ""}</p>
-  //               <p><b>WhatsApp:</b> ${doc.whatsappConsent ? "Yes" : "No"}</p>`,
-  //       });
-  //     } catch (e) { /* log only */ }
-  //     return RESP.created(res, doc, "Enquiry received");
-  //   } catch (e) { return RESP.bad(res, e.message, 400); }
+  try {
+    const doc = await Enquiry.create(req.body);
+
+    // Send admin email
+    try {
+      await sendMail({
+        to: process.env.ADMIN_EMAIL,
+        subject: `New Enquiry from ${doc.fullName}`,
+        html: `
+          <h2>New Enquiry Received</h2>
+          <p><b>Name:</b> ${doc.fullName}</p>
+          <p><b>Mobile:</b> ${doc.mobileNumber}</p>
+          <p><b>State:</b> ${doc.state || "N/A"}</p>
+          <p><b>Pincode:</b> ${doc.pincode || "N/A"}</p>
+          <p><b>Product:</b> ${doc.product || "N/A"}</p>
+          <p><b>Brief Description:</b> ${doc.briefDescription || "N/A"}</p>
+          <p><b>WhatsApp:</b> ${doc.whatsappConsent ? "Yes" : "No"}</p>
+        `,
+      });
+    } catch (e) {
+      console.error("Failed to send enquiry email:", e.message);
+    }
+
+    return RESP.created(res, doc, "Enquiry received");
+  } catch (e) {
+    return RESP.bad(res, e.message, 400);
+  }
 };
 
 exports.list = async (req, res) => {
