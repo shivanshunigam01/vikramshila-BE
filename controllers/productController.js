@@ -144,12 +144,22 @@ export const create = async (req, res) => {
 };
 
 export const list = async (req, res) => {
-  const { q } = req.query;
-  const filter = q ? { title: new RegExp(q, "i") } : {};
-  const items = await Product.find(filter).sort({ createdAt: -1 });
-  return ok(res, items);
-};
+  try {
+    const { q } = req.query;
 
+    const filter = q ? { title: new RegExp(q, "i") } : {};
+
+    // Sort by category first, then by createdAt (descending)
+    const items = await Product.find(filter).sort({
+      category: 1,
+      createdAt: -1,
+    });
+
+    return ok(res, items);
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
 export const get = async (req, res) => {
   const item = await Product.findById(req.params.id);
   if (!item) return bad(res, "Not found", 404);
@@ -471,6 +481,36 @@ export const filterProducts = async (req, res) => {
     });
   } catch (error) {
     console.error("Filter error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ Get distinct applicationSuitability values
+export const getApplications = async (req, res) => {
+  try {
+    // Get distinct raw strings
+    const rawApplications = await Product.distinct("applicationSuitability");
+
+    let applications = [];
+
+    rawApplications.forEach((entry) => {
+      if (entry) {
+        // Some entries may have comma-separated values
+        const parts = entry.split(",").map((a) => a.trim());
+        applications.push(...parts);
+      }
+    });
+
+    // Deduplicate + sort alphabetically
+    applications = [...new Set(applications)].sort();
+
+    return res.status(200).json({
+      success: true,
+      total: applications.length,
+      data: applications,
+    });
+  } catch (error) {
+    console.error("Get Applications error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

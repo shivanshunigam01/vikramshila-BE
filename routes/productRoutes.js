@@ -78,4 +78,5 @@ router.get("/:id/brochure", async (req, res) => {
   }
 });
 
+router.get("/applications", ctrl.getApplications);
 module.exports = router;
