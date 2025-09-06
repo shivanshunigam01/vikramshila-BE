@@ -3,6 +3,7 @@ const ctrl = require("../controllers/productController");
 const { protect, restrict } = require("../middleware/auth");
 const { uploadProductMedia } = require("../middleware/upload");
 
+router.get("/applications/list", ctrl.getUniqueApplications);
 // Public routes
 router.get("/", ctrl.list);
 router.get("/:id", ctrl.get);
@@ -78,5 +79,4 @@ router.get("/:id/brochure", async (req, res) => {
   }
 });
 
-router.get("/applications", ctrl.getApplications);
 module.exports = router;

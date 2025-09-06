@@ -95,6 +95,7 @@ export const create = async (req, res) => {
     const product = await Product.create({
       title: req.body.title || "",
       description: req.body.description || "",
+      seatAvailability: req.body.seatAvailability || "",
       category: req.body.category || "",
       price: req.body.price || "",
       status: req.body.status || "active",
@@ -268,6 +269,7 @@ export const update = async (req, res) => {
     Object.assign(product, {
       title: req.body.title || product.title,
       description: req.body.description || product.description,
+      seatAvailability: req.body.seatAvailability || product.seatAvailability,
       category: req.body.category || product.category,
       price: req.body.price || product.price,
       status: req.body.status || product.status,
@@ -486,31 +488,31 @@ export const filterProducts = async (req, res) => {
 };
 
 // ✅ Get distinct applicationSuitability values
-export const getApplications = async (req, res) => {
+export const getUniqueApplications = async (req, res) => {
   try {
-    // Get distinct raw strings
-    const rawApplications = await Product.distinct("applicationSuitability");
+    // Fetch only the `applicationSuitability` field
+    const products = await Product.find({}, "applicationSuitability");
 
+    // Collect and split values
     let applications = [];
-
-    rawApplications.forEach((entry) => {
-      if (entry) {
-        // Some entries may have comma-separated values
-        const parts = entry.split(",").map((a) => a.trim());
+    products.forEach((p) => {
+      if (p.applicationSuitability) {
+        const parts = p.applicationSuitability
+          .split(",")
+          .map((item) => item.trim());
         applications.push(...parts);
       }
     });
 
-    // Deduplicate + sort alphabetically
-    applications = [...new Set(applications)].sort();
+    // Deduplicate
+    const uniqueApplications = [...new Set(applications)];
 
-    return res.status(200).json({
+    res.json({
       success: true,
-      total: applications.length,
-      data: applications,
+      data: uniqueApplications,
     });
-  } catch (error) {
-    console.error("Get Applications error:", error);
-    return res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };

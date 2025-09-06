@@ -4,6 +4,7 @@ const productSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
     description: String,
+    seatAvailability: String,
     price: { type: String, default: "" },
 
     // ✅ Images (Cloudinary URLs)
