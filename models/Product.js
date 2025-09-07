@@ -5,6 +5,10 @@ const productSchema = new mongoose.Schema(
     title: { type: String, required: true },
     description: String,
     seatAvailability: String,
+    mileage: String, // New Field
+    tyreLife: String, // New Field
+    tyresCost: String, // New Field - Cost of tyres,
+    freightRate: String, // New Field - Freight Rate
     price: { type: String, default: "" },
 
     // ✅ Images (Cloudinary URLs)
