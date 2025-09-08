@@ -384,105 +384,230 @@ export const downloadBrochure = async (req, res) => {
 
 export const filterProducts = async (req, res) => {
   try {
-    const { application, fuelType, payload, priceRange } = req.body;
+    const { application, fuelType, payload, priceRange } = req.body || {};
 
-    let andConditions = [];
-
-    // 🔹 Application filter
+    // 1) Quick text filters
+    const textMatch = {};
     if (application && application.toLowerCase() !== "all") {
-      andConditions.push({
-        applicationSuitability: { $regex: application, $options: "i" },
-      });
+      textMatch.applicationSuitability = { $regex: application, $options: "i" };
     }
-
-    // 🔹 Fuel Type filter
     if (fuelType && fuelType.toLowerCase() !== "all") {
-      andConditions.push({ fuelType: { $regex: fuelType, $options: "i" } });
+      textMatch.fuelType = { $regex: fuelType, $options: "i" };
     }
 
-    // 🔹 Payload filter (expecting "750-1500" or "12000+")
-    if (payload && payload.toLowerCase() !== "all") {
-      if (payload.includes("-")) {
-        const [minStr, maxStr] = payload.split("-");
-        const min = parseInt(minStr.trim(), 10);
-        const max = parseInt(maxStr.trim(), 10);
+    // 2) Parse UI ranges
+    const parseRange = (str) => {
+      if (!str || String(str).toLowerCase() === "all") return null;
+      const s = String(str).trim();
+      if (s.endsWith("+")) {
+        const min = parseInt(s.slice(0, -1).trim(), 10);
+        return Number.isFinite(min) ? { type: "gte", min } : null;
+      }
+      if (s.includes("-")) {
+        const [a, b] = s.split("-");
+        const min = parseInt(String(a).trim(), 10);
+        const max = parseInt(String(b).trim(), 10);
+        return Number.isFinite(min) && Number.isFinite(max)
+          ? { type: "between", min, max }
+          : null;
+      }
+      return null;
+    };
+    const payloadFilter = parseRange(payload);
 
-        if (!isNaN(min) && !isNaN(max)) {
-          andConditions.push({
-            $expr: {
-              $and: [
-                {
-                  $gte: [
-                    {
-                      $toInt: {
-                        $arrayElemAt: [{ $split: ["$payload", " "] }, 0],
+    const parsePriceRange = (str) => {
+      if (!str || String(str).toLowerCase() === "all") return null;
+      const s = String(str).trim().toUpperCase();
+
+      const toINR = (token) => {
+        const hasL = token.includes("L");
+        const num = parseFloat(token.replace(/L/gi, "").trim());
+        if (!Number.isFinite(num)) return null;
+        return hasL ? Math.round(num * 100000) : Math.round(num);
+      };
+
+      if (s.endsWith("L+")) {
+        const min = toINR(s.replace(/L\+$/i, ""));
+        return Number.isFinite(min) ? { type: "gte", min } : null;
+      }
+      if (s.endsWith("+")) {
+        const min = toINR(s.replace(/\+$/, ""));
+        return Number.isFinite(min) ? { type: "gte", min } : null;
+      }
+      if (s.includes("-")) {
+        const [a, b] = s.split("-");
+        const min = toINR(a);
+        const max = toINR(b);
+        return Number.isFinite(min) && Number.isFinite(max)
+          ? { type: "between", min, max }
+          : null;
+      }
+      return null;
+    };
+    const priceFilter = parsePriceRange(priceRange);
+
+    // 3) Build char-wise helpers (no $split / regex)
+    const digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+    const charArray = (field) => ({
+      $map: {
+        input: { $range: [0, { $strLenCP: { $ifNull: [field, ""] } }] },
+        as: "i",
+        in: { $substrCP: [{ $ifNull: [field, ""] }, "$$i", 1] },
+      },
+    });
+
+    // keep digits + one dot (we allow '.' to support 1.5T)
+    const numberStringWithDot = (field) => ({
+      $let: {
+        vars: {
+          chars: charArray(field),
+        },
+        in: {
+          $reduce: {
+            input: "$$chars",
+            initialValue: { s: "", hasDot: false },
+            in: {
+              s: {
+                $cond: [
+                  { $in: ["$$this", digits] },
+                  { $concat: ["$$value.s", "$$this"] },
+                  {
+                    // allow a single dot
+                    $cond: [
+                      {
+                        $and: [
+                          { $eq: ["$$this", "."] },
+                          { $eq: ["$$value.hasDot", false] },
+                        ],
                       },
-                    },
-                    min,
-                  ],
-                },
-                {
-                  $lte: [
-                    {
-                      $toInt: {
-                        $arrayElemAt: [{ $split: ["$payload", " "] }, 0],
-                      },
-                    },
-                    max,
-                  ],
-                },
-              ],
+                      { $concat: ["$$value.s", "."] },
+                      "$$value.s",
+                    ],
+                  },
+                ],
+              },
+              hasDot: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ["$$this", "."] },
+                      { $eq: ["$$value.hasDot", false] },
+                    ],
+                  },
+                  true,
+                  "$$value.hasDot",
+                ],
+              },
             },
-          });
-        }
-      } else if (payload.endsWith("+")) {
-        const min = parseInt(payload.replace("+", ""), 10);
-        if (!isNaN(min)) {
-          andConditions.push({
-            $expr: {
-              $gte: [
-                {
-                  $toInt: { $arrayElemAt: [{ $split: ["$payload", " "] }, 0] },
-                },
-                min,
-              ],
+          },
+        },
+      },
+    });
+
+    const numericFromString = (field) => ({
+      $convert: {
+        input: {
+          $let: {
+            vars: { ns: numberStringWithDot(field) },
+            in: {
+              $cond: [{ $gt: [{ $strLenCP: "$$ns.s" }, 0] }, "$$ns.s", "0"],
             },
-          });
-        }
+          },
+        },
+        to: "double",
+        onError: 0,
+        onNull: 0,
+      },
+    });
+
+    // Detect tons vs kg on payload, convert to KG
+    const payloadKgExpr = {
+      $let: {
+        vars: {
+          upper: { $toUpper: { $ifNull: ["$payload", ""] } },
+          base: numericFromString("$payload"), // double, may be 1.5 for "1.5T"
+        },
+        in: {
+          $toInt: {
+            $cond: [
+              {
+                $gt: [
+                  {
+                    $indexOfCP: [
+                      "$$upper",
+                      "T", // covers "T", "TON", "T."
+                    ],
+                  },
+                  -1,
+                ],
+              },
+              { $round: { $multiply: ["$$base", 1000] } }, // T -> KG
+              { $round: "$$base" }, // already KG
+            ],
+          },
+        },
+      },
+    };
+
+    // Price to INR (supports "₹10,00,000", "1000000", or "10L")
+    const priceInrExpr = {
+      $let: {
+        vars: {
+          upper: { $toUpper: { $ifNull: ["$price", ""] } },
+          base: numericFromString("$price"),
+        },
+        in: {
+          $toInt: {
+            $cond: [
+              {
+                $gt: [{ $indexOfCP: ["$$upper", "L"] }, -1],
+              },
+              { $round: { $multiply: ["$$base", 100000] } },
+              { $round: "$$base" },
+            ],
+          },
+        },
+      },
+    };
+
+    // 4) Pipeline
+    const pipeline = [];
+    if (Object.keys(textMatch).length) pipeline.push({ $match: textMatch });
+
+    pipeline.push({
+      $addFields: {
+        _numPayloadKg: payloadKgExpr,
+        _numPriceInr: priceInrExpr,
+      },
+    });
+
+    const exprAnd = [];
+    if (payloadFilter) {
+      if (payloadFilter.type === "between") {
+        exprAnd.push(
+          { $gte: ["$_numPayloadKg", payloadFilter.min] },
+          { $lte: ["$_numPayloadKg", payloadFilter.max] }
+        );
+      } else {
+        exprAnd.push({ $gte: ["$_numPayloadKg", payloadFilter.min] });
       }
     }
-
-    // 🔹 Price Range filter (expecting "15-20L" or "30L+")
-    if (priceRange && priceRange.toLowerCase() !== "all") {
-      if (priceRange.includes("-")) {
-        const [minStr, maxStr] = priceRange.split("-");
-        const min = parseInt(minStr.replace("L", "").trim(), 10) * 100000;
-        const max = parseInt(maxStr.replace("L", "").trim(), 10) * 100000;
-
-        if (!isNaN(min) && !isNaN(max)) {
-          andConditions.push({
-            $expr: {
-              $and: [
-                { $gte: [{ $toInt: "$price" }, min] },
-                { $lte: [{ $toInt: "$price" }, max] },
-              ],
-            },
-          });
-        }
-      } else if (priceRange.endsWith("L+")) {
-        const min = parseInt(priceRange.replace("L+", "").trim(), 10) * 100000;
-        if (!isNaN(min)) {
-          andConditions.push({
-            $expr: { $gte: [{ $toInt: "$price" }, min] },
-          });
-        }
+    if (priceFilter) {
+      if (priceFilter.type === "between") {
+        exprAnd.push(
+          { $gte: ["$_numPriceInr", priceFilter.min] },
+          { $lte: ["$_numPriceInr", priceFilter.max] }
+        );
+      } else {
+        exprAnd.push({ $gte: ["$_numPriceInr", priceFilter.min] });
       }
     }
+    if (exprAnd.length) pipeline.push({ $match: { $expr: { $and: exprAnd } } });
 
-    // ✅ Build filter
-    const filter = andConditions.length > 0 ? { $and: andConditions } : {};
+    pipeline.push({ $sort: { createdAt: -1 } });
+    pipeline.push({ $project: { _numPayloadKg: 0, _numPriceInr: 0 } });
 
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    const products = await Product.aggregate(pipeline);
 
     return res.status(200).json({
       success: true,
