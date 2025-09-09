@@ -116,14 +116,6 @@ export const registerCustomer = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // Optional: Check if customer already exists
-    const existingCustomer = await Customer.findOne({ phone });
-    if (existingCustomer) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Phone number already registered" });
-    }
-
     const newCustomer = new Customer({
       name,
       email,
@@ -138,15 +130,6 @@ export const registerCustomer = async (req, res) => {
       .json({ success: true, message: "User registered successfully" });
   } catch (error) {
     console.error("Registration error:", error);
-
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate field value entered",
-        error: error.keyValue,
-      });
-    }
-
     return res
       .status(500)
       .json({ success: false, message: "Server error", error: error.message });
