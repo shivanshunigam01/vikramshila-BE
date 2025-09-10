@@ -9,6 +9,17 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const toStringArray = (v) =>
+  Array.isArray(v) ? v.filter(Boolean) : [v].filter(Boolean);
+
+const toDriverComfort = (v) => {
+  if (v === undefined || v === null || String(v).trim() === "")
+    return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.max(0, Math.min(10, n));
+};
+
 export const create = async (req, res) => {
   try {
     // ✅ Ensure price is always string
@@ -19,7 +30,7 @@ export const create = async (req, res) => {
     // ✅ Product images (Cloudinary)
     const images = (req.files?.images || []).map((f) => f.path);
 
-    // ✅ Reviews (Cloudinary)
+    // ✅ Reviews (Cloudinary or JSON/body)
     let reviews = [];
     if (req.files?.reviewFiles) {
       reviews = req.files.reviewFiles.map((f, i) => ({
@@ -48,7 +59,7 @@ export const create = async (req, res) => {
       }
     }
 
-    // ✅ Testimonials (Cloudinary)
+    // ✅ Testimonials (Cloudinary or JSON/body)
     let testimonials = [];
     if (req.files?.testimonialFiles) {
       testimonials = req.files.testimonialFiles.map((f, i) => ({
@@ -78,7 +89,7 @@ export const create = async (req, res) => {
       }
     }
 
-    // ✅ Brochure (Local disk storage) - NEW IMPLEMENTATION
+    // ✅ Brochure (Local disk storage)
     let brochureFile = null;
     if (req.files?.brochureFile && req.files.brochureFile[0]) {
       const file = req.files.brochureFile[0];
@@ -91,7 +102,7 @@ export const create = async (req, res) => {
       };
     }
 
-    // ✅ Create product with all fields from frontend
+    // ✅ Create product with all fields from frontend (PLUS the 2 new fields)
     const product = await Product.create({
       title: req.body.title || "",
       description: req.body.description || "",
@@ -103,7 +114,6 @@ export const create = async (req, res) => {
       category: req.body.category || "",
       price: req.body.price || "",
       status: req.body.status || "active",
-      // ✅ Add this line
       newLaunch: req.body.newLaunch === "1" || req.body.newLaunch === 1 ? 1 : 0,
 
       // Vehicle Specs
@@ -139,6 +149,10 @@ export const create = async (req, res) => {
       // Reviews & Testimonials
       reviews,
       testimonials,
+
+      // ✅ NEW FIELDS
+      monitoringFeatures: toStringArray(req.body.monitoringFeatures),
+      driverComfort: toDriverComfort(req.body.driverComfort),
     });
 
     return res.status(201).json({ message: "Product created", product });
@@ -147,7 +161,6 @@ export const create = async (req, res) => {
     return res.status(400).json({ error: e.message });
   }
 };
-
 export const list = async (req, res) => {
   try {
     const { q } = req.query;
@@ -243,10 +256,9 @@ export const update = async (req, res) => {
       }
     }
 
-    // ✅ Brochure handling - NEW IMPLEMENTATION
+    // ✅ Brochure handling (replace & delete old local file)
     let brochureFile = product.brochureFile;
     if (req.files?.brochureFile && req.files.brochureFile[0]) {
-      // Delete old brochure file if it exists
       if (
         product.brochureFile?.path &&
         fs.existsSync(product.brochureFile.path)
@@ -257,8 +269,6 @@ export const update = async (req, res) => {
           console.warn("Failed to delete old brochure:", error.message);
         }
       }
-
-      // Set new brochure file
       const file = req.files.brochureFile[0];
       brochureFile = {
         filename: file.filename,
@@ -269,7 +279,7 @@ export const update = async (req, res) => {
       };
     }
 
-    // ✅ Assign all fields
+    // ✅ Assign all fields (including NEW FIELDS)
     Object.assign(product, {
       title: req.body.title || product.title,
       description: req.body.description || product.description,
@@ -316,6 +326,17 @@ export const update = async (req, res) => {
       brochureFile: brochureFile,
       reviews: reviews.length ? reviews : product.reviews,
       testimonials: testimonials.length ? testimonials : product.testimonials,
+
+      // ✅ NEW FIELDS
+      monitoringFeatures:
+        req.body.monitoringFeatures !== undefined
+          ? toStringArray(req.body.monitoringFeatures)
+          : product.monitoringFeatures,
+
+      driverComfort:
+        req.body.driverComfort !== undefined
+          ? toDriverComfort(req.body.driverComfort)
+          : product.driverComfort,
     });
 
     await product.save();

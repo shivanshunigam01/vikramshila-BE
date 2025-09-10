@@ -1,3 +1,4 @@
+// models/Product.js
 import mongoose from "mongoose";
 
 const productSchema = new mongoose.Schema(
@@ -5,10 +6,10 @@ const productSchema = new mongoose.Schema(
     title: { type: String, required: true },
     description: String,
     seatAvailability: String,
-    mileage: String, // New Field
-    tyreLife: String, // New Field
-    tyresCost: String, // New Field - Cost of tyres,
-    freightRate: String, // New Field - Freight Rate
+    mileage: String,
+    tyreLife: String,
+    tyresCost: String,
+    freightRate: String,
     price: { type: String, default: "" },
 
     // ✅ Images (Cloudinary URLs)
@@ -22,7 +23,7 @@ const productSchema = new mongoose.Schema(
         customerName: String,
         customerLocation: String,
         rating: Number,
-        file: String, // Cloudinary URL
+        file: String,
       },
     ],
 
@@ -34,17 +35,17 @@ const productSchema = new mongoose.Schema(
         customerName: String,
         customerLocation: String,
         customerDesignation: String,
-        file: String, // Cloudinary URL
+        file: String,
       },
     ],
 
-    // ✅ Brochure file (LOCAL STORAGE) - Updated Schema
+    // ✅ Brochure (LOCAL)
     brochureFile: {
-      filename: String, // Generated filename
-      originalName: String, // Original uploaded filename
-      path: String, // Full file path on server
-      size: Number, // File size in bytes
-      mimetype: String, // MIME type (e.g., 'application/pdf')
+      filename: String,
+      originalName: String,
+      path: String,
+      size: Number,
+      mimetype: String,
     },
 
     status: { type: String, enum: ["active", "inactive"], default: "active" },
@@ -70,10 +71,13 @@ const productSchema = new mongoose.Schema(
     newLaunch: { type: Number, enum: [0, 1], default: 0 },
     profitMargin: String,
     usp: [String],
+
+    // ✅ NEW FIELDS
+    monitoringFeatures: { type: [String], default: [] }, // e.g. ["FleetEdge","Driver Monitoring"]
+    driverComfort: { type: Number, min: 0, max: 10 }, // 0–10 score (optional)
   },
   { timestamps: true }
 );
 
-// 👇 Model
 const Product = mongoose.model("Product", productSchema);
 export default Product;
