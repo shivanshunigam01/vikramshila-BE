@@ -3,9 +3,11 @@ import Lead from "../models/Lead.js";
 // Create a new lead (quote submission)
 export const createLead = async (req, res) => {
   try {
+    // Body (multipart -> strings): parse numerics safely
     const {
       productId,
       productTitle,
+      productCategory,
       vehiclePrice,
       downPaymentAmount,
       downPaymentPercentage,
@@ -14,19 +16,60 @@ export const createLead = async (req, res) => {
       tenure,
       estimatedEMI,
       status,
+      userId,
+      userName,
+      userEmail,
+      userPhone,
     } = req.body;
+
+    // Optional files (Cloudinary/Multer will put .path on uploaded files)
+    let aadharFile = null;
+    if (req.files?.aadharFile?.[0]) {
+      const f = req.files.aadharFile[0];
+      aadharFile = {
+        filename: f.filename,
+        originalName: f.originalname,
+        path: f.path, // Cloudinary URL if using cloudinary storage
+        size: f.size,
+        mimetype: f.mimetype,
+      };
+    }
+
+    let panCardFile = null;
+    if (req.files?.panCardFile?.[0]) {
+      const f = req.files.panCardFile[0];
+      panCardFile = {
+        filename: f.filename,
+        originalName: f.originalname,
+        path: f.path,
+        size: f.size,
+        mimetype: f.mimetype,
+      };
+    }
 
     const newLead = new Lead({
       productId,
       productTitle,
-      vehiclePrice,
-      downPaymentAmount,
-      downPaymentPercentage,
-      loanAmount,
-      interestRate,
-      tenure,
-      estimatedEMI,
-      status,
+      productCategory: productCategory || "",
+
+      vehiclePrice: Number(vehiclePrice),
+      downPaymentAmount: Number(downPaymentAmount),
+      downPaymentPercentage: Number(downPaymentPercentage),
+      loanAmount: Number(loanAmount),
+      interestRate: Number(interestRate),
+      tenure: Number(tenure),
+      estimatedEMI: Number(estimatedEMI),
+
+      status: status || "pending",
+
+      userId,
+      userName,
+      userEmail,
+      userPhone,
+
+      // NEW
+      aadharFile,
+      panCardFile,
     });
 
     const savedLead = await newLead.save();
@@ -37,6 +80,7 @@ export const createLead = async (req, res) => {
       data: savedLead,
     });
   } catch (error) {
+    console.error("Error creating lead:", error);
     return res.status(500).json({
       success: false,
       message: "Error creating lead",

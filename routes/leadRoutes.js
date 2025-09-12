@@ -1,4 +1,5 @@
 const express = require("express");
+const { uploadLeadKyc } = require("../middleware/upload");
 const {
   createLead,
   getLeads,
@@ -8,8 +9,7 @@ const {
 const router = express.Router();
 
 // POST - submit a new lead/quote
-router.post("/leads-create", createLead);
-
+router.post("/leads-create", uploadLeadKyc, createLead); // Aadhaar & PAN optional
 // GET - fetch all leads
 router.get("/leads-get", getLeads);
 

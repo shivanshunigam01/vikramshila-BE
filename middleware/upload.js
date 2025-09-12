@@ -143,6 +143,62 @@ const handleMixedUpload = (req, res, next) => {
     }
   });
 };
+// ================= Lead KYC Upload (Aadhaar & PAN) =================
+const leadKycUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    // allow images & pdfs; tighten this if you want
+    const ok =
+      file.mimetype.startsWith("image/") || file.mimetype === "application/pdf";
+    if (!ok) return cb(new Error("Only images or PDF are allowed"), false);
+    cb(null, true);
+  },
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB per file (adjust as needed)
+  },
+}).fields([
+  { name: "aadharFile", maxCount: 1 },
+  { name: "panCardFile", maxCount: 1 },
+]);
+
+const uploadLeadKyc = (req, res, next) => {
+  leadKycUpload(req, res, async (err) => {
+    if (err) return next(err);
+
+    try {
+      const kycFields = ["aadharFile", "panCardFile"];
+
+      for (const fieldName of kycFields) {
+        if (req.files?.[fieldName]?.length) {
+          const file = req.files[fieldName][0];
+
+          await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+              {
+                folder: "leads/kyc", // folder name in Cloudinary
+                resource_type: "auto", // allow images & pdf
+                public_id: `${Date.now()}-${file.originalname.split(".")[0]}`,
+              },
+              (error, result) => {
+                if (error) return reject(error);
+                // mutate multer file object so controller can read
+                file.path = result.secure_url;
+                file.public_id = result.public_id;
+                file.mimetype = file.mimetype; // preserve
+                resolve(result);
+              }
+            );
+            uploadStream.end(file.buffer);
+          });
+        }
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+};
 
 // ================= Other Storage Configurations =================
 // Scheme Media Upload
@@ -271,4 +327,5 @@ module.exports = {
   uploadSingle,
   upload,
   uploadProductMedia: handleMixedUpload,
+  uploadLeadKyc,
 };
