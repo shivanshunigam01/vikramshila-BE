@@ -1,13 +1,24 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const path = require("path");
-const dotenv = require("dotenv");
-const morgan = require("morgan");
-const fs = require("fs");
+// server.js (ESM)
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import path from "path";
+import dotenv from "dotenv";
+import morgan from "morgan";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
+// Load env
 dotenv.config();
+
 const app = express();
+
+// __dirname polyfill (ESM)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Static public
+app.use("/public", express.static(path.join(__dirname, "public")));
 
 // Middleware
 app.use(morgan("dev"));
@@ -48,25 +59,37 @@ for (const dir of subdirs) {
   if (!fs.existsSync(p)) fs.mkdirSync(p);
 }
 
-// Static files
+// Static /uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Routes
-app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/products", require("./routes/productRoutes"));
-app.use("/api/schemes", require("./routes/schemeRoutes"));
-app.use("/api/testimonials", require("./routes/testimonialRoutes"));
-app.use("/api/launches", require("./routes/launchRoutes"));
-app.use("/api/services", require("./routes/serviceRoutes"));
-app.use("/api/enquiries", require("./routes/enquiryRoutes"));
-app.use("/api/dashboard", require("./routes/dashboardRoutes"));
-app.use("/api/upload", require("./routes/uploadRoutes"));
-app.use("/api/leads", require("./routes/leadRoutes")); // ✅ FIXED: using here
-app.use("/api/service-booking", require("./routes/serviceBookingRoutes"));
-// app.use("/api/otp", require("./routes/otpRoutes"));
-app.use("/api/banners", require("./routes/bannerRoutes"));
-app.use("/api/grievances", require("./routes/grievanceRoutes"));
+// --- Routes (ESM imports – note the .js extensions) ---
+import authRoutes from "./routes/authRoutes.js";
+import productRoutes from "./routes/productRoutes.js";
+import schemeRoutes from "./routes/schemeRoutes.js";
+import testimonialRoutes from "./routes/testimonialRoutes.js";
+import launchRoutes from "./routes/launchRoutes.js";
+import serviceRoutes from "./routes/serviceRoutes.js";
+import enquiryRoutes from "./routes/enquiryRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
+import leadRoutes from "./routes/leadRoutes.js";
+import serviceBookingRoutes from "./routes/serviceBookingRoutes.js";
+import bannerRoutes from "./routes/bannerRoutes.js";
+import grievanceRoutes from "./routes/grievanceRoutes.js";
 
+app.use("/api/auth", authRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/schemes", schemeRoutes);
+app.use("/api/testimonials", testimonialRoutes);
+app.use("/api/launches", launchRoutes);
+app.use("/api/services", serviceRoutes);
+app.use("/api/enquiries", enquiryRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/leads", leadRoutes); // 👈 base path for your leads router
+app.use("/api/service-booking", serviceBookingRoutes);
+app.use("/api/banners", bannerRoutes);
+app.use("/api/grievances", grievanceRoutes);
 
 // Health check
 app.get("/", (req, res) =>
@@ -86,4 +109,4 @@ mongoose
   })
   .catch((err) => console.error("MongoDB connection error:", err));
 
-module.exports = app;
+export default app; // ESM default export
