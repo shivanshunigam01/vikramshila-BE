@@ -38,7 +38,7 @@ module.exports = async function sendSms({ to, body, via = "sms" }) {
 
   return client.messages.create({
     to: recipient,
-    from,
+    from: process.env.TWILIO_PHONE_NUMBER,
     body,
   });
 };
