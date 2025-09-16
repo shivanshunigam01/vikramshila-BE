@@ -19,6 +19,13 @@ const signToken = (id) =>
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   });
 
+function normalizePhoneIndia(input) {
+  const digits = String(input || "").replace(/\D/g, "");
+  const last10 = digits.slice(-10);
+  if (last10.length !== 10) return { ok: false };
+  return { ok: true, e164: `+91${last10}` }; // store/send E.164 consistently
+}
+
 // 🔹 Register Admin User
 export const registerUser = async (req, res) => {
   try {
@@ -79,37 +86,37 @@ export const login = async (req, res) => {
 const generateOTP = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
-export const sendOtp = async (req, res) => {
-  const { phone } = req.body;
+// export const sendOtp = async (req, res) => {
+//   const { phone } = req.body;
 
-  if (!phone)
-    return res.status(400).json({ message: "Phone number is required" });
+//   if (!phone)
+//     return res.status(400).json({ message: "Phone number is required" });
 
-  const otp = generateOTP();
+//   const otp = generateOTP();
 
-  await Otp.deleteMany({ phone });
+//   await Otp.deleteMany({ phone });
 
-  try {
-    const newOtp = new Otp({ phone, otp });
-    await newOtp.save();
+//   try {
+//     const newOtp = new Otp({ phone, otp });
+//     await newOtp.save();
 
-    try {
-      await client.messages.create({
-        body: `Your OTP for registering with VIKRAMSHILA AUTOMOBILES is: ${otp}. Do not share this code with anyone.`,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to: phone,
-      });
-    } catch (err) {
-      console.error("Twilio Error:", err.message, err.code, err.moreInfo);
-      throw err;
-    }
-    return res.status(200).json({ message: "OTP sent successfully" });
-  } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Failed to send OTP", error: error.message });
-  }
-};
+//     try {
+//       await client.messages.create({
+//         body: `Your OTP for registering with VIKRAMSHILA AUTOMOBILES is: ${otp}. Do not share this code with anyone.`,
+//         from: process.env.TWILIO_PHONE_NUMBER,
+//         to: phone,
+//       });
+//     } catch (err) {
+//       console.error("Twilio Error:", err.message, err.code, err.moreInfo);
+//       throw err;
+//     }
+//     return res.status(200).json({ message: "OTP sent successfully" });
+//   } catch (error) {
+//     return res
+//       .status(500)
+//       .json({ message: "Failed to send OTP", error: error.message });
+//   }
+// };
 
 // 🔹 Register Customer
 export const registerCustomer = async (req, res) => {
@@ -221,5 +228,224 @@ export const loginUser = async (req, res) => {
       message: "Server error",
       error: error.message,
     });
+  }
+};
+
+export const sendOtp = async (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return bad(res, "Phone number is required", 400);
+
+  const norm = normalizePhoneIndia(phone);
+  if (!norm.ok) return bad(res, "Invalid phone number", 400);
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expireAt = new Date(
+    Date.now() + (Number(process.env.OTP_TTL_MS) || 5 * 60 * 1000)
+  ); // 5 min
+
+  try {
+    await Otp.deleteMany({ phone: norm.e164 });
+    await Otp.create({ phone: norm.e164, otp, expireAt, attempts: 0 }); // <-- expireAt REQUIRED
+
+    // Twilio prefers E.164
+    await client.messages.create({
+      body: `Your OTP for VIKRAMSHILA AUTOMOBILES is: ${otp}. Valid for 5 minutes. Do not share this code with anyone.`,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: norm.e164,
+    });
+
+    return ok(res, { sent: true }, "OTP sent successfully");
+  } catch (error) {
+    console.error("sendOtp error:", error);
+    return bad(res, error.message || "Failed to send OTP", 500);
+  }
+};
+
+export const customerlogin = async (req, res) => {
+  try {
+    return res.status(200).json({ message: "OTP sent successfully" });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Failed to send OTP", error: error.message });
+  }
+};
+
+// ✅ OTP Login (verify OTP; create/update customer; issue JWT)
+export const otpLogin = async (req, res) => {
+  try {
+    const { phone, otp, name, email } = req.body;
+    if (!phone || !otp) return bad(res, "Phone and OTP are required", 400);
+
+    const norm = normalizePhoneIndia(phone);
+    if (!norm.ok) return bad(res, "Invalid phone number", 400);
+
+    const doc = await Otp.findOne({ phone: norm.e164 });
+    if (!doc) return bad(res, "Invalid or expired OTP", 400);
+    if (doc.expireAt && doc.expireAt < new Date()) {
+      await Otp.deleteMany({ phone: norm.e164 });
+      return bad(res, "OTP expired. Please request a new one.", 400);
+    }
+    if (doc.otp !== otp) {
+      doc.attempts = (doc.attempts || 0) + 1;
+      await doc.save();
+      return bad(res, "Invalid OTP", 400);
+    }
+
+    // consume OTP
+    await Otp.deleteMany({ phone: norm.e164 });
+
+    // find / create customer (store same normalized phone)
+    let customer = await Customer.findOne({ phone: norm.e164 });
+    if (!customer) {
+      if (!name) return bad(res, "Name is required for first-time login", 400);
+      customer = await Customer.create({
+        name: String(name).trim(),
+        email: email ? String(email).trim() : null,
+        phone: norm.e164,
+      });
+    } else {
+      let updated = false;
+      if (!customer.name && name) {
+        customer.name = String(name).trim();
+        updated = true;
+      }
+      if (!customer.email && email) {
+        customer.email = String(email).trim();
+        updated = true;
+      }
+      if (updated) await customer.save();
+    }
+
+    const token = jwt.sign({ id: customer._id }, process.env.JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    });
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return ok(
+      res,
+      {
+        token,
+        user: {
+          id: customer._id,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+      },
+      "Login successful"
+    );
+  } catch (error) {
+    console.error("otpLogin error:", error);
+    return bad(res, error.message, 500);
+  }
+};
+
+export const checkCustomer = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return bad(res, "Phone is required", 400);
+
+    const norm = normalizePhoneIndia(phone);
+    if (!norm.ok) return bad(res, "Invalid phone number", 400);
+
+    const exists = !!(await Customer.findOne({ phone: norm.e164 }));
+    return ok(res, { exists });
+  } catch (error) {
+    return bad(res, error.message, 500);
+  }
+};
+
+const needsBranch = (role) =>
+  ["dsm", "branch_admin", "dse"].includes(String(role));
+
+export const createStaffUser = async (req, res) => {
+  try {
+    let { username, password, name, email, role, branch } = req.body || {};
+
+    // --- Basic validation ---
+    if (!username || !password || !name || !email || !role) {
+      return bad(
+        res,
+        "username, password, name, email and role are required",
+        400
+      );
+    }
+
+    username = String(username).trim().toLowerCase();
+    email = String(email).trim().toLowerCase();
+    name = String(name).trim();
+    role = String(role).trim();
+
+    if (String(password).length < 6) {
+      return bad(res, "Password must be at least 6 characters", 400);
+    }
+    if (needsBranch(role)) {
+      if (!branch || !String(branch).trim()) {
+        return bad(res, "Branch is required for DSM / Branch Admin / DSE", 400);
+      }
+      branch = String(branch).trim();
+    } else {
+      branch = null; // ignore for admin
+    }
+
+    // --- Uniqueness checks ---
+    const existsUsername = await User.findOne({ username });
+    if (existsUsername) return bad(res, "Username already exists", 409);
+
+    const existsEmail = await User.findOne({ email });
+    if (existsEmail) return bad(res, "Email already exists", 409);
+
+    // --- Create user ---
+    const user = await User.create({
+      username,
+      password, // hashed by pre-save hook
+      name,
+      email,
+      role,
+      branch,
+    });
+
+    return ok(
+      res,
+      {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        branch: user.branch,
+        createdAt: user.createdAt,
+      },
+      "User created successfully"
+    );
+  } catch (err) {
+    // handle duplicate key error gracefully
+    if (err?.code === 11000) {
+      const key = Object.keys(err.keyPattern || {})[0] || "field";
+      return bad(res, `${key} must be unique`, 409);
+    }
+    return bad(res, err?.message || "Failed to create user", 500);
+  }
+};
+
+export const getAllUsers = async (_req, res) => {
+  try {
+    const users = await User.find({})
+      .select(
+        "_id username name email role branch isActive createdAt updatedAt"
+      ) // no password
+      .sort("-createdAt")
+      .lean();
+
+    res.json({ success: true, data: users });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to fetch users" });
   }
 };

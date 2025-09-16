@@ -3,10 +3,9 @@ import bcrypt from "bcryptjs";
 
 const customerSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    email: { type: String, required: true },
-    phone: { type: String, required: true },
-    password: { type: String, required: true },
+    name: { type: String, required: true, trim: true },
+    email: { type: String, trim: true, lowercase: true, default: null },
+    phone: { type: String, required: true, unique: true, index: true },
   },
   { timestamps: true }
 );

@@ -1,53 +1,97 @@
+// middleware/protect.js (CJS)
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const mongoose = require("mongoose");
+let User = require("../models/User");
+User = User?.default || User;
+
+const getToken = (req) => {
+  const auth = (
+    req.headers.authorization ||
+    req.headers.Authorization ||
+    ""
+  ).trim();
+  if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
+  const x = (req.headers["x-auth-token"] || "").toString().trim();
+  if (x) return x;
+  const cookieTok =
+    req.cookies?.token || req.cookies?.access_token || req.cookies?.jwt;
+  if (cookieTok) return String(cookieTok).trim();
+  return null;
+};
+
+const extractUserId = (decoded) => {
+  if (!decoded) return null;
+  if (typeof decoded === "string") return decoded;
+  let id =
+    decoded.id ||
+    decoded._id ||
+    decoded.userId ||
+    decoded.sub ||
+    (decoded.user && (decoded.user.id || decoded.user._id)) ||
+    (decoded.data &&
+      (decoded.data.id ||
+        decoded.data._id ||
+        decoded.data.userId ||
+        decoded.data.sub)) ||
+    null;
+  if (id && typeof id === "object") id = id._id || id.id || null;
+  if (typeof id === "string") id = id.trim();
+  return id || null;
+};
 
 exports.protect = async (req, res, next) => {
   try {
-    let token = null;
-
-    // Authorization: Bearer <token>
-    const auth = req.headers.authorization || "";
-    if (auth.startsWith("Bearer ")) token = auth.split(" ")[1];
-
-    // Optionally accept x-auth-token too
-    if (!token && req.headers["x-auth-token"])
-      token = req.headers["x-auth-token"];
-
-    if (!token) {
+    const token = getToken(req);
+    if (!token)
       return res
         .status(401)
         .json({ success: false, message: "Not authorized" });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res
+        .status(401)
+        .json({
+          success: false,
+          message:
+            err?.name === "TokenExpiredError"
+              ? "Token expired"
+              : "Invalid token",
+        });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // ✅ Handle multiple possible payload shapes
-    const userId =
-      decoded?.id || decoded?._id || decoded?.userId || decoded?.sub || null;
-
-    if (!userId) {
+    let userId = extractUserId(decoded);
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
       return res
         .status(401)
         .json({ success: false, message: "Invalid token payload" });
     }
 
-    const user = await User.findById(userId).select("_id name email role");
-    if (!user) {
+    const user = await (User.findById
+      ? User.findById(userId)
+      : User.default.findById(userId)
+    ).select("_id name email role isActive");
+    if (!user)
       return res
         .status(401)
         .json({ success: false, message: "User not found" });
-    }
+    if (user.isActive === false)
+      return res
+        .status(403)
+        .json({ success: false, message: "User is inactive" });
 
-    // Attach a minimal, consistent shape
     req.user = {
       _id: String(user._id),
       name: user.name || "",
       email: (user.email || "").toLowerCase(),
       role: user.role || "user",
     };
+    req.token = token;
 
     next();
-  } catch (e) {
+  } catch {
     return res
       .status(401)
       .json({ success: false, message: "Invalid/expired token" });

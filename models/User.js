@@ -1,16 +1,39 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+// models/User.js
+import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+
+const VALID_ROLES = ["admin", "dsm", "branch_admin", "dse"];
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true, lowercase: true },
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+    name: { type: String, required: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
     password: { type: String, required: true, minlength: 6 },
     role: {
       type: String,
-      enum: ["admin", "editor", "viewer"],
-      default: "admin",
+      enum: VALID_ROLES,
+      required: true,
+      default: "dse",
+      index: true,
     },
+    // required for DSM / Branch Admin / DSE; ignored for Admin
+    branch: { type: String, default: null, trim: true },
+    isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
@@ -27,4 +50,6 @@ userSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-module.exports = mongoose.model("User", userSchema);
+const User = mongoose.models.User || mongoose.model("User", userSchema);
+export default User;
+export { VALID_ROLES };
