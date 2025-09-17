@@ -36,7 +36,7 @@ const router = Router();
 router.post("/leads-create", uploadLeadKyc, createLead);
 
 // Admin/editor list & detail (protect so req.user is present)
-router.get("/leads-get", protect, /* restrict("admin", "editor"), */ getLeads);
+router.get("/leads-get", /* restrict("admin", "editor"), */ getLeads);
 router.get(
   "/leads-get/:id",
   protect,

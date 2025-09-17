@@ -51,16 +51,14 @@ exports.protect = async (req, res, next) => {
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (err) {
-      return res
-        .status(401)
-        .json({
-          success: false,
-          message:
-            err?.name === "TokenExpiredError"
-              ? "Token expired"
-              : "Invalid token",
-        });
+      return res.status(401).json({
+        success: false,
+        message:
+          err?.name === "TokenExpiredError" ? "Token expired" : "Invalid token",
+      });
     }
+
+    console.log("Decoded JWT:", decoded);
 
     let userId = extractUserId(decoded);
     if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
@@ -69,18 +67,19 @@ exports.protect = async (req, res, next) => {
         .json({ success: false, message: "Invalid token payload" });
     }
 
-    const user = await (User.findById
-      ? User.findById(userId)
-      : User.default.findById(userId)
-    ).select("_id name email role isActive");
+    const user = await User.findById(userId).select(
+      "_id name email role isActive"
+    );
     if (!user)
       return res
         .status(401)
         .json({ success: false, message: "User not found" });
-    if (user.isActive === false)
+
+    if (user.isActive === false) {
       return res
         .status(403)
         .json({ success: false, message: "User is inactive" });
+    }
 
     req.user = {
       _id: String(user._id),
@@ -91,7 +90,8 @@ exports.protect = async (req, res, next) => {
     req.token = token;
 
     next();
-  } catch {
+  } catch (err) {
+    console.error("Protect middleware error:", err);
     return res
       .status(401)
       .json({ success: false, message: "Invalid/expired token" });

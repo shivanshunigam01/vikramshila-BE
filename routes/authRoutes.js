@@ -10,6 +10,7 @@ const {
   otpLogin,
   createStaffUser,
   getAllUsers,
+  deleteUser,
 } = require("../controllers/authController");
 router.post("/login", login);
 // Register new admin
@@ -31,5 +32,8 @@ router.post(
 );
 
 // If you want it protected, use: router.get("/", protect, getAllUsers);
-router.get("/", getAllUsers);
+router.get("/getAllUsers", getAllUsers);
+// ✅ NEW: delete a user by id
+router.delete("/users/:id", deleteUser);
+
 module.exports = router;

@@ -70,13 +70,15 @@ import testimonialRoutes from "./routes/testimonialRoutes.js";
 import launchRoutes from "./routes/launchRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import enquiryRoutes from "./routes/enquiryRoutes.js";
+import reportsRoutes from "./routes/reports.routes.js";
 import dashboardRoutes from "./routes/dashboardRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import leadRoutes from "./routes/leadRoutes.js";
 import serviceBookingRoutes from "./routes/serviceBookingRoutes.js";
 import bannerRoutes from "./routes/bannerRoutes.js";
 import grievanceRoutes from "./routes/grievanceRoutes.js";
-
+import creditReportRoutes from "./routes/creditReport.js";
+app.use("/api/credit", creditReportRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/schemes", schemeRoutes);
@@ -84,6 +86,7 @@ app.use("/api/testimonials", testimonialRoutes);
 app.use("/api/launches", launchRoutes);
 app.use("/api/services", serviceRoutes);
 app.use("/api/enquiries", enquiryRoutes);
+app.use("/api/reports", reportsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/leads", leadRoutes); // 👈 base path for your leads router

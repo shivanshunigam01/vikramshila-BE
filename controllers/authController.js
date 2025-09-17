@@ -449,3 +449,27 @@ export const getAllUsers = async (_req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch users" });
   }
 };
+
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return bad(res, "User id required", 400);
+
+    // find first to validate + get role
+    const user = await User.findById(id).select("role");
+    if (!user) return bad(res, "User not found", 404);
+
+    // prevent deleting the last admin
+    if (user.role === "admin") {
+      const adminCount = await User.countDocuments({ role: "admin" });
+      if (adminCount <= 1) {
+        return bad(res, "Cannot delete the last admin user", 400);
+      }
+    }
+
+    await User.findByIdAndDelete(id);
+    return ok(res, { id }, "User deleted");
+  } catch (err) {
+    return bad(res, err?.message || "Failed to delete user", 500);
+  }
+};
