@@ -6,6 +6,7 @@ import twilio from "twilio";
 import dotenv from "dotenv";
 import Customer from "../models/Customer.js";
 import bcrypt from "bcryptjs";
+import Dse from "../models/Dse.js";
 
 dotenv.config();
 
@@ -471,5 +472,72 @@ export const deleteUser = async (req, res) => {
     return ok(res, { id }, "User deleted");
   } catch (err) {
     return bad(res, err?.message || "Failed to delete user", 500);
+  }
+};
+// --- Register DSE ---
+export const registerDse = async (req, res) => {
+  try {
+    const { name, phone, password } = req.body;
+    if (!name || !phone || !password) {
+      return bad(res, "Missing fields", 400);
+    }
+
+    const exists = await Dse.findOne({ phone });
+    if (exists) return bad(res, "Phone already registered", 400);
+
+    const dse = new Dse({ name, phone });
+    await dse.setPassword(password);
+    await dse.save();
+
+    const token = jwt.sign(
+      { id: dse._id, name: dse.name, role: dse.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "180d" }
+    );
+
+    return ok(
+      res,
+      {
+        user: { id: dse._id, name: dse.name, phone: dse.phone, role: dse.role },
+        token,
+      },
+      "DSE registered successfully"
+    );
+  } catch (err) {
+    console.error("registerDse error:", err);
+    return bad(res, "Server error", 500);
+  }
+};
+
+// --- Login DSE ---
+export const loginDse = async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+    if (!phone || !password)
+      return bad(res, "Phone and password required", 400);
+
+    const dse = await Dse.findOne({ phone });
+    if (!dse) return bad(res, "Invalid phone/password", 400);
+
+    const valid = await dse.validatePassword(password);
+    if (!valid) return bad(res, "Invalid phone/password", 400);
+
+    const token = jwt.sign(
+      { id: dse._id, name: dse.name, role: dse.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "180d" }
+    );
+
+    return ok(
+      res,
+      {
+        user: { id: dse._id, name: dse.name, phone: dse.phone, role: dse.role },
+        token,
+      },
+      "DSE login successful"
+    );
+  } catch (err) {
+    console.error("loginDse error:", err);
+    return bad(res, "Server error", 500);
   }
 };

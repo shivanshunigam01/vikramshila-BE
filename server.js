@@ -12,6 +12,7 @@ import { fileURLToPath } from "url";
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", true);
 
 // __dirname polyfill (ESM)
 const __filename = fileURLToPath(import.meta.url);
@@ -78,6 +79,8 @@ import serviceBookingRoutes from "./routes/serviceBookingRoutes.js";
 import bannerRoutes from "./routes/bannerRoutes.js";
 import grievanceRoutes from "./routes/grievanceRoutes.js";
 import creditReportRoutes from "./routes/creditReport.js";
+import paymentRoutes from "./routes/payment.routes.js";
+import trackingRoutes from "./routes/tracking.js";
 app.use("/api/credit", creditReportRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
@@ -93,6 +96,9 @@ app.use("/api/leads", leadRoutes); // 👈 base path for your leads router
 app.use("/api/service-booking", serviceBookingRoutes);
 app.use("/api/banners", bannerRoutes);
 app.use("/api/grievances", grievanceRoutes);
+app.use("/api/payment", paymentRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/tracking", trackingRoutes);
 
 // Health check
 app.get("/", (req, res) =>

@@ -11,7 +11,12 @@ const {
   createStaffUser,
   getAllUsers,
   deleteUser,
+  loginDse,
+  registerDse,
 } = require("../controllers/authController");
+
+const Dse = require("../models/Dse");
+
 router.post("/login", login);
 // Register new admin
 router.post("/register", registerUser);
@@ -35,5 +40,9 @@ router.post(
 router.get("/getAllUsers", getAllUsers);
 // ✅ NEW: delete a user by id
 router.delete("/users/:id", deleteUser);
+
+// ✅ DSE Routes
+router.post("/register-dse", registerDse);
+router.post("/login-dse", loginDse);
 
 module.exports = router;
