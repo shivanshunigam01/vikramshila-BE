@@ -13,6 +13,7 @@ const {
   deleteUser,
   loginDse,
   registerDse,
+  getDseList,
 } = require("../controllers/authController");
 
 const Dse = require("../models/Dse");
@@ -44,5 +45,6 @@ router.delete("/users/:id", deleteUser);
 // ✅ DSE Routes
 router.post("/register-dse", registerDse);
 router.post("/login-dse", loginDse);
+router.get("/get-dse", getDseList);
 
 module.exports = router;

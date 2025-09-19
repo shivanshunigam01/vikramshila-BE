@@ -541,3 +541,43 @@ export const loginDse = async (req, res) => {
     return bad(res, "Server error", 500);
   }
 };
+
+export const getDseList = async (req, res) => {
+  try {
+    const q = (req.query.q || "").trim();
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit || "50", 10), 1),
+      200
+    );
+    const sort = String(req.query.sort || "-createdAt");
+
+    const filter = {};
+    if (q) {
+      filter.$or = [
+        { name: { $regex: q, $options: "i" } },
+        { phone: { $regex: q, $options: "i" } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      Dse.find(filter)
+        .select("_id name phone role createdAt updatedAt") // 🚫 exclude passwordHash
+        .sort(sort)
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Dse.countDocuments(filter),
+    ]);
+
+    res.json({
+      items,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error("GET /api/dse error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};

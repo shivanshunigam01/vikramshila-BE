@@ -65,4 +65,74 @@ router.get("/user/:id", auth, async (req, res) => {
   }
 });
 
+/**
+ * Get latest location for a specific DSE by id
+ * GET /api/tracking/latest/:id
+ */
+router.get("/latest/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const point = await LocationPoint.findOne({ user: id })
+      .sort({ ts: -1 })
+      .lean();
+
+    if (!point) return res.status(404).json({ message: "No location found" });
+    res.json(point);
+  } catch (err) {
+    console.error("latest/:id error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/**
+ * Get latest location for all DSEs (one point per user)
+ * GET /api/tracking/latest-all
+ * Optional: ?activeWithinMinutes=60 to filter out stale devices
+ */
+router.get("/latest-all", auth, async (req, res) => {
+  try {
+    const activeWithinMinutes = Number(req.query.activeWithinMinutes || 0);
+    const recentSince = activeWithinMinutes
+      ? new Date(Date.now() - activeWithinMinutes * 60 * 1000)
+      : null;
+
+    // Aggregate: sort newest first, then group by user and keep first doc
+    const pipeline = [
+      ...(recentSince ? [{ $match: { ts: { $gte: recentSince } } }] : []),
+      { $sort: { user: 1, ts: -1 } },
+      {
+        $group: {
+          _id: "$user",
+          point: { $first: "$$ROOT" },
+        },
+      },
+      {
+        $replaceRoot: { newRoot: "$point" },
+      },
+      // optional projection to keep response lightweight
+      {
+        $project: {
+          _id: 1,
+          user: 1,
+          ts: 1,
+          lat: 1,
+          lon: 1,
+          acc: 1,
+          speed: 1,
+          heading: 1,
+          battery: 1,
+          provider: 1,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
+    ];
+
+    const points = await LocationPoint.aggregate(pipeline);
+    res.json(points);
+  } catch (err) {
+    console.error("latest-all error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 export default router;
