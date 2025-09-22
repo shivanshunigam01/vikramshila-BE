@@ -174,22 +174,29 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // ✅ Validation
     if (!email || !password) {
       return res
         .status(400)
         .json({ success: false, message: "Email and password are required" });
     }
 
-    // ✅ Find user by email
-    const customer = await Customer.findOne({ email });
+    // ✅ Explicitly include password
+    const customer = await Customer.findOne({ email }).select("+password");
     if (!customer) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
 
-    // ✅ Use the model's comparePassword method
+    if (!customer.password) {
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message: "User record has no password stored",
+        });
+    }
+
     const isMatch = await customer.comparePassword(password);
     if (!isMatch) {
       return res
@@ -197,10 +204,8 @@ export const loginUser = async (req, res) => {
         .json({ success: false, message: "Invalid credentials" });
     }
 
-    // ✅ Generate JWT
     const token = signToken(customer._id);
 
-    // ✅ Store token in cookie
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -208,7 +213,6 @@ export const loginUser = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // ✅ Response
     return res.json({
       success: true,
       message: "Login successful",

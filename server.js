@@ -81,6 +81,8 @@ import grievanceRoutes from "./routes/grievanceRoutes.js";
 import creditReportRoutes from "./routes/creditReport.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import trackingRoutes from "./routes/tracking.js";
+import newsletterRoutes from "./routes/newsletter.js";
+app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/credit", creditReportRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
