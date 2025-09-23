@@ -19,7 +19,7 @@ if (!/^https?:\/\//i.test(SUREPASS_BASE_URL)) {
   );
 }
 if (!SUREPASS_TOKEN) {
-  console.error("Missing SUREPASS_TOKEN (JWT) in environment");
+  console.error("❌ Missing SUREPASS_TOKEN (JWT) in environment");
 }
 
 // Build endpoints robustly
@@ -47,7 +47,7 @@ const razor = new Razorpay({
 router.post("/razorpay/order", async (req, res) => {
   try {
     const order = await razor.orders.create({
-      amount: 75 * 100, // paise
+      amount: 75 * 100, // in paise
       currency: "INR",
       receipt: `cibil_${Date.now()}`,
     });
@@ -59,7 +59,7 @@ router.post("/razorpay/order", async (req, res) => {
 });
 
 /* =========================
-   Step 2: Verify payment + fetch CIBIL (JSON)
+   Step 2: Verify payment + fetch CIBIL JSON
 ========================= */
 router.post("/razorpay/verify-cibil", async (req, res) => {
   try {
@@ -127,66 +127,45 @@ router.post("/razorpay/verify-cibil", async (req, res) => {
 });
 
 /* =========================
-   (No Razorpay UI) Fetch Experian PDF
+   Step 3: Fetch Experian PDF (Direct API)
    POST /payment/experian-pdf
-   Body: { name, mobile, pan, consent?="Y", raw?=false }
 ========================= */
 router.post("/experian-pdf", async (req, res) => {
   try {
-    const { name, mobile, pan, consent = "Y", raw = false } = req.body || {};
+    const { name, mobile, pan, consent = "Y" } = req.body;
 
     if (!name || !mobile || !pan) {
-      return res.status(400).json({
-        ok: false,
-        error: "name, mobile, and pan are required",
-      });
+      return res
+        .status(400)
+        .json({ ok: false, error: "name, mobile, and pan are required" });
     }
 
+    // Call Surepass PDF API
     const spRes = await axios.post(
       SUREPASS_PDF_ENDPOINT,
-      { name, consent, mobile, pan, ...(raw ? { raw: true } : {}) },
+      { name, consent, mobile, pan },
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${SUREPASS_TOKEN}`, // keep this ONLY on server
+          Authorization: `Bearer ${SUREPASS_TOKEN}`,
         },
         timeout: 30000,
       }
     );
 
-    const { data, success, message, message_code, status_code } =
-      spRes.data || {};
-    if (!success) {
-      return res.status(400).json({
-        ok: false,
-        error: message || "Surepass PDF fetch failed",
-        code: message_code,
-        status_code,
-      });
+    const link =
+      spRes.data?.data?.credit_report_link ||
+      spRes.data?.data?.report_url ||
+      spRes.data?.credit_report_link;
+
+    if (!link) {
+      throw new Error("No PDF link found in Surepass response");
     }
 
-    return res.json({
-      ok: true,
-      score: data?.credit_score,
-      client_id: data?.client_id,
-      name: data?.name,
-      mobile: data?.mobile,
-      pan: data?.pan,
-      credit_report_link: data?.credit_report_link, // secure signed URL
-    });
+    return res.json({ ok: true, credit_report_link: link });
   } catch (err) {
-    const status = err?.response?.status || 500;
-    const payload = err?.response?.data || { message: err.message };
-    console.error("[experian-pdf] error:", {
-      endpoint: SUREPASS_PDF_ENDPOINT,
-      status,
-      payload,
-    });
-    return res.status(status).json({
-      ok: false,
-      error: payload?.message || "Failed to fetch Experian PDF",
-      details: payload,
-    });
+    console.error("experian-pdf error:", err?.response?.data || err.message);
+    res.status(500).json({ ok: false, error: "Failed to fetch Experian PDF" });
   }
 });
 
