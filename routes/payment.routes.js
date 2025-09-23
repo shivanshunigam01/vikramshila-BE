@@ -85,4 +85,65 @@ router.post("/razorpay/verify-cibil", async (req, res) => {
   }
 });
 
+const SUREPASS_TOKEN =
+  (process.env.SUREPASS_TOKEN && process.env.SUREPASS_TOKEN.trim()) ||
+  "https://kyc-api.surepass.io"; // or https://kyc-api.surepass.app if that's your tenant
+
+// POST /api/cibil/experian-pdf
+// Body: { name: string, mobile: string, pan: string, consent?: "Y", raw?: boolean }
+router.post("/experian-pdf", async (req, res) => {
+  try {
+    const { name, mobile, pan, consent = "Y", raw = false } = req.body || {};
+
+    if (!name || !mobile || !pan) {
+      return res.status(400).json({
+        ok: false,
+        error: "name, mobile, and pan are required",
+      });
+    }
+
+    const spRes = await axios.post(
+      `${SUREPASS_TOKEN}/api/v1/credit-report-experian/fetch-report-pdf`,
+      { name, consent, mobile, pan, ...(raw ? { raw: true } : {}) },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.SUREPASS_TOKEN}`, // keep this ONLY on server
+        },
+        timeout: 30000,
+      }
+    );
+
+    const { data, success, message, message_code, status_code } =
+      spRes.data || {};
+    if (!success) {
+      return res.status(400).json({
+        ok: false,
+        error: message || "Surepass PDF fetch failed",
+        code: message_code,
+        status_code,
+      });
+    }
+
+    // Return only what's needed to the frontend
+    return res.json({
+      ok: true,
+      score: data?.credit_score,
+      client_id: data?.client_id,
+      name: data?.name,
+      mobile: data?.mobile,
+      pan: data?.pan,
+      credit_report_link: data?.credit_report_link, // secure signed URL
+    });
+  } catch (err) {
+    const payload = err?.response?.data || { message: err.message };
+    console.error("experian-pdf error:", payload);
+    return res.status(err?.response?.status || 500).json({
+      ok: false,
+      error: payload?.message || "Failed to fetch Experian PDF",
+      details: payload,
+    });
+  }
+});
+
 module.exports = router;
