@@ -37,7 +37,7 @@ const fileSchema = new mongoose.Schema(
 
 const leadSchema = new mongoose.Schema(
   {
-    // Product
+    /* -------- Product -------- */
     productId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
@@ -46,7 +46,7 @@ const leadSchema = new mongoose.Schema(
     productTitle: { type: String, required: true },
     productCategory: { type: String },
 
-    // Finance
+    /* -------- Finance -------- */
     vehiclePrice: { type: Number, required: true },
     downPaymentAmount: { type: Number, required: true },
     downPaymentPercentage: { type: Number, required: true },
@@ -55,32 +55,63 @@ const leadSchema = new mongoose.Schema(
     tenure: { type: Number, required: true },
     estimatedEMI: { type: Number, required: true },
 
+    /* -------- Status -------- */
     status: {
       type: String,
       enum: ["C0", "C1", "C2", "C3"],
       default: "C0",
-      set: mapLegacyStatus, // 👈 map legacy -> new BEFORE validation
+      set: mapLegacyStatus,
     },
 
-    // Assignment (used by /leads/assign and FE UI)
-    assignedTo: { type: String, default: null }, // ← NEW
+    /* -------- Assignment (admin/DSE ops) -------- */
+    assignedTo: { type: String, default: null }, // display name (compat)
     assignedToId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     assignedToEmail: String,
 
-    // NEW: DSE activity trail
+    /* DSE activity trail */
     dseUpdates: [DseUpdateSchema],
 
-    // User
+    /* -------- User (account making the lead) -------- */
     userId: { type: String, required: true },
     userName: { type: String, required: true },
     userEmail: { type: String, required: true },
-    userPhone: { type: String, required: true },
+    userPhone: { type: String, required: false },
 
-    // KYC
+    /* -------- Applicant details (optional, from modal) -------- */
+    financeCustomerName: String,
+    addressLine: String,
+    state: String,
+    district: String,
+    pin: String, // keep as string to preserve leading zeros
+    whatsapp: String,
+    applicantEmail: String, // FE sends "email" – controller maps it here
+    applicantType: {
+      type: String,
+      enum: ["individual", "company"],
+      default: "individual",
+    },
+    companyGST: String,
+    companyPAN: String,
+    sourceOfEnquiry: String,
+    dseId: { type: String }, // keeps raw id string from FE (can be ObjectId string)
+    dseName: String,
+
+    /* -------- KYC fields -------- */
     aadharFile: { type: fileSchema, default: null },
     panCardFile: { type: fileSchema, default: null },
     aadharNumber: { type: Number, default: null },
     panNumber: { type: String, default: null },
+    kycPhone: String,
+    kycProvided: { type: Boolean, default: false },
+    kycFields: { type: mongoose.Schema.Types.Mixed, default: {} },
+    kycConsent: { type: Boolean, default: false },
+
+    /* -------- CIBIL / credit meta (optional) -------- */
+    cibilScore: { type: Number, default: null },
+    cibilStatus: { type: String, default: null },
+    fullNameForCibil: String,
+    creditChargeINR: { type: Number, default: 0 },
+    creditProvider: String,
   },
   { timestamps: true }
 );
