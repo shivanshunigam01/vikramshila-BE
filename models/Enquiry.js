@@ -1,34 +1,79 @@
-// models/Enquiry.js
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
+
+const fileSchema = new mongoose.Schema(
+  {
+    filename: String,
+    originalName: String,
+    path: String,
+    size: Number,
+    mimetype: String,
+  },
+  { _id: false }
+);
 
 const enquirySchema = new mongoose.Schema(
   {
-    fullName: { type: String, required: true },
-    mobileNumber: { type: String, required: true },
-    state: { type: String },
-    pincode: { type: String },
-    product: { type: String },
-    briefDescription: { type: String },
-    whatsappConsent: { type: Boolean, default: false },
-    contacted: { type: Boolean, default: false },
+    // Product
+    productId: String,
+    productTitle: String,
+    productCategory: String,
 
-    // Assignment
-    assignedToId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-    assignedTo: { type: String, default: null },
-    assignedToEmail: { type: String, default: null },
+    // Finance
+    vehiclePrice: Number,
+    downPaymentAmount: Number,
+    downPaymentPercentage: Number,
+    loanAmount: Number,
+    interestRate: Number,
+    tenure: Number,
+    estimatedEMI: Number,
 
-    // Status (similar to Lead)
+    // Status (C0 → C3)
     status: {
       type: String,
       enum: ["C0", "C1", "C2", "C3"],
       default: "C0",
     },
+
+    // Customer
+    customerName: String,
+    customerPhone: String,
+    customerEmail: String,
+    address: String,
+    city: String,
+    state: String,
+    pin: String,
+
+    // Assignment
+    dseId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    dseName: String,
+
+    // KYC
+    aadharNumber: String,
+    panNumber: String,
+    aadharFile: fileSchema,
+    panCardFile: fileSchema,
+    kycConsent: Boolean,
+
+    // Credit
+    cibilScore: Number,
+    cibilStatus: String,
+
+    // Quotation
+    quotation: {
+      amount: Number,
+      date: Date,
+      file: fileSchema,
+    },
+
+    // Internal Costing
+    costing: {
+      basePrice: Number,
+      discount: Number,
+      tax: Number,
+      total: Number,
+    },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Enquiry", enquirySchema);
+export default mongoose.model("Enquiry", enquirySchema);
