@@ -1,96 +1,39 @@
+// routes/enquiryRoutes.js
 import express from "express";
-import Enquiry from "../models/Enquiry.js";
+import {
+  listEnquiries,
+  listAssignedToMe,
+  getEnquiryById,
+  createEnquiry,
+  updateEnquiry,
+  assignEnquiry,
+  dseUpdateEnquiry,
+} from "../controllers/enquiryController.js";
+
+// Optional auth middlewares. If you have them, uncomment/use.
+// import { requireAuth } from "../middlewares/requireAuth.js";
 
 const router = express.Router();
 
-/* ---------- Create Enquiry ---------- */
-router.post("/", async (req, res) => {
-  try {
-    const enquiry = await Enquiry.create(req.body);
-    res.status(201).json({ success: true, data: enquiry });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+/* ---------------- Specific routes FIRST ---------------- */
+// router.use(requireAuth); // if your API is protected globally for these routes
 
-/* ---------- Get All Enquiries ---------- */
-router.get("/", async (_req, res) => {
-  try {
-    const enquiries = await Enquiry.find().sort({ createdAt: -1 });
-    res.json({ success: true, data: enquiries });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+// List all (admin panel)
+router.get("/list", listEnquiries);
 
-/* ---------- Get Single Enquiry ---------- */
-router.get("/:id", async (req, res) => {
-  try {
-    const enquiry = await Enquiry.findById(req.params.id);
-    if (!enquiry)
-      return res.status(404).json({ success: false, message: "Not found" });
-    res.json({ success: true, data: enquiry });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+// Current user's assigned enquiries (DSE)
+router.get("/assigned-to-me", listAssignedToMe);
 
-/* ---------- Update Enquiry ---------- */
-router.put("/:id", async (req, res) => {
-  try {
-    const enquiry = await Enquiry.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    res.json({ success: true, data: enquiry });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+// Assign an enquiry
+router.post("/assign", assignEnquiry);
 
-/* ---------- Assign to DSE ---------- */
-router.post("/:id/assign", async (req, res) => {
-  try {
-    const { dseId, dseName } = req.body;
-    const enquiry = await Enquiry.findByIdAndUpdate(
-      req.params.id,
-      { dseId, dseName, status: "C1" },
-      { new: true }
-    );
-    res.json({ success: true, data: enquiry });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+/* ----------- CRUD base (create + list alias) ----------- */
+router.post("/", createEnquiry);
+router.get("/", listEnquiries);
 
-/* ---------- Create Quotation ---------- */
-router.post("/:id/quotation", async (req, res) => {
-  try {
-    const { amount, date } = req.body;
-    const enquiry = await Enquiry.findByIdAndUpdate(
-      req.params.id,
-      { quotation: { amount, date }, status: "C2" },
-      { new: true }
-    );
-    res.json({ success: true, data: enquiry });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/* ---------- Create Internal Costing ---------- */
-router.post("/:id/costing", async (req, res) => {
-  try {
-    const { basePrice, discount, tax } = req.body;
-    const total = basePrice - discount + tax;
-    const enquiry = await Enquiry.findByIdAndUpdate(
-      req.params.id,
-      { costing: { basePrice, discount, tax, total }, status: "C3" },
-      { new: true }
-    );
-    res.json({ success: true, data: enquiry });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+/* --------------- ID-based routes (regex) --------------- */
+router.patch("/:id([0-9a-fA-F]{24})/dse-update", dseUpdateEnquiry);
+router.put("/:id([0-9a-fA-F]{24})", updateEnquiry);
+router.get("/:id([0-9a-fA-F]{24})", getEnquiryById);
 
 export default router;

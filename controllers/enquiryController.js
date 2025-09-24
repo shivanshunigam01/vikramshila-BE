@@ -1,201 +1,210 @@
 // controllers/enquiryController.js
-import Enquiry from "../models/Enquiry.js";
-import sendMail from "../utils/sendMail.js";
-import User from "../models/User.js";
 import mongoose from "mongoose";
-import { ok, created, bad, error } from "../utils/response.js"; // ✅ import functions directly
+import Enquiry from "../models/Enquiry.js";
+import User from "../models/User.js"; // only needed if you populate or validate assignees
 
-const isObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+const isObjectId = (v) => /^[0-9a-fA-F]{24}$/.test(String(v || ""));
+const N = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
 
-// Create a new enquiry
-export const create = async (req, res) => {
+/* ------------------------- LIST (admin) ------------------------- */
+export const listEnquiries = async (_req, res) => {
   try {
-    const enquiry = new Enquiry(req.body);
-    await enquiry.save();
-    return created(res, enquiry, "Enquiry created successfully"); // use created()
-  } catch (err) {
-    return error(res, err); // use error()
+    const items = await Enquiry.find().sort({ createdAt: -1 });
+    return res.json({ success: true, data: items });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
   }
 };
 
-// // List all enquiries
-// exports.list = async (req, res, next) => {
-//   try {
-//     const { status, q } = req.query;
-
-//     const filter = {};
-//     if (status && ["C0", "C1", "C2", "C3"].includes(status)) {
-//       filter.status = status;
-//     }
-
-//     if (q && q.trim()) {
-//       const s = q.trim();
-//       filter.$or = [
-//         { fullName: new RegExp(s, "i") },
-//         { mobileNumber: new RegExp(s, "i") },
-//         { product: new RegExp(s, "i") },
-//       ];
-//     }
-
-//     const data = await Enquiry.find(filter)
-//       .sort({ createdAt: -1 })
-//       // ✅ correct path to populate
-//       .populate({
-//         path: "assignedToId",
-//         select: "name email role",
-//         // strictPopulate is true by default in Mongoose 7, so use correct path
-//       })
-//       .lean();
-
-//     res.json({ success: true, message: "OK", data });
-//   } catch (err) {
-//     next(err);
-//   }
-// };
-
-// Mark an enquiry as contacted
-export const markContacted = async (req, res) => {
+/* ----------------- LIST assigned to logged-in DSE --------------- */
+/* Expects req.user?  If using JWT middleware, ensure it sets req.user = { _id, name, email } */
+export const listAssignedToMe = async (req, res) => {
   try {
-    const enquiry = await Enquiry.findByIdAndUpdate(
-      req.params.id,
-      { contacted: true },
-      { new: true }
-    );
-    if (!enquiry) return bad(res, "Enquiry not found", 404); // use bad()
-    return ok(res, enquiry, "Enquiry marked as contacted");
-  } catch (err) {
-    return error(res, err);
-  }
-};
-
-// Remove an enquiry
-export const remove = async (req, res) => {
-  try {
-    const enquiry = await Enquiry.findByIdAndDelete(req.params.id);
-    if (!enquiry) return bad(res, "Enquiry not found", 404);
-    return ok(res, enquiry, "Enquiry deleted successfully");
-  } catch (err) {
-    return error(res, err);
-  }
-};
-
-export const list = async (req, res, next) => {
-  try {
-    const { status, q } = req.query;
-
-    const filter = {};
-    if (status && ["C0", "C1", "C2", "C3"].includes(status)) {
-      filter.status = status;
-    }
-
-    if (q && q.trim()) {
-      const s = q.trim();
-      filter.$or = [
-        { fullName: new RegExp(s, "i") },
-        { mobileNumber: new RegExp(s, "i") },
-        { product: new RegExp(s, "i") },
-      ];
-    }
-
-    const data = await Enquiry.find(filter)
-      .sort({ createdAt: -1 })
-      // ✅ populate correct path
-      .populate({
-        path: "assignedToId",
-        select: "name email role",
-      })
-      .lean();
-
-    res.json({ success: true, message: "OK", data });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const assignEnquiry = async (req, res, next) => {
-  try {
-    const { enquiryId, assigneeId } = req.body;
-
-    // Validate body
-    if (!enquiryId || !assigneeId) {
-      return res.status(400).json({
-        success: false,
-        message: "enquiryId and assigneeId are required",
-      });
-    }
-    if (!isObjectId(enquiryId) || !isObjectId(assigneeId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid enquiryId or assigneeId",
-      });
-    }
-
-    // Find assignee (must be a DSE ideally)
-    const user = await User.findById(assigneeId).select("name email role");
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Assignee not found" });
-    }
-
-    // Assign enquiry
-    const updated = await Enquiry.findByIdAndUpdate(
-      enquiryId,
-      {
-        assignedToId: user._id,
-        assignedTo: user.name || null,
-        assignedToEmail: user.email || null,
-      },
-      { new: true }
-    ).lean();
-
-    if (!updated) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Enquiry not found" });
-    }
-
-    return res.json({
-      success: true,
-      message: "Enquiry assigned successfully",
-      data: updated,
-    });
-  } catch (err) {
-    console.error("assignEnquiry error:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-export const listAssignedToMeEnquiries = async (req, res, next) => {
-  try {
-    const myId = req.user && req.user._id;
-    if (!myId) {
+    const me = req.user?._id || req.user?.id;
+    if (!isObjectId(me)) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
-
-    const data = await Enquiry.find({ assignedToId: myId })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    res.json({ success: true, data });
-  } catch (err) {
-    next(err);
+    const items = await Enquiry.find({
+      $or: [{ assignedToId: me }, { dseId: String(me) }],
+    }).sort({ createdAt: -1 });
+    return res.json({ success: true, data: items });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
   }
 };
 
-export const dseUpdateEnquiry = async (req, res, next) => {
+/* --------------------------- DETAIL ----------------------------- */
+export const getEnquiryById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, message } = req.body;
+    if (!isObjectId(id)) {
+      return res.status(400).json({ success: false, message: "Invalid id" });
+    }
+    const item = await Enquiry.findById(id);
+    if (!item) return res.status(404).json({ success: false, message: "Not found" });
+    return res.json({ success: true, data: item });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
 
-    const update = {};
-    if (status && ["C0", "C1", "C2", "C3"].includes(status))
-      update.status = status;
-    if (message) update.lastMessage = message;
+/* --------------------------- CREATE ----------------------------- */
+export const createEnquiry = async (req, res) => {
+  try {
+    const b = req.body || {};
+    // Minimal create — expand if you accept file uploads etc.
+    const doc = await Enquiry.create({
+      // product
+      productId: b.productId,
+      productTitle: b.productTitle,
+      productCategory: b.productCategory || "",
 
-    const doc = await Enquiry.findByIdAndUpdate(id, update, { new: true });
-    res.json({ success: true, data: doc });
-  } catch (err) {
-    next(err);
+      // finance
+      vehiclePrice: N(b.vehiclePrice),
+      downPaymentAmount: N(b.downPaymentAmount),
+      downPaymentPercentage: N(b.downPaymentPercentage),
+      loanAmount: N(b.loanAmount),
+      interestRate: N(b.interestRate),
+      tenure: N(b.tenure),
+      estimatedEMI: N(b.estimatedEMI),
+
+      // status
+      status: b.status || "C0",
+
+      // customer/user
+      customerName: b.customerName || b.fullName || b.userName || "",
+      userName: b.userName,
+      userEmail: b.userEmail || b.email,
+      userPhone: b.userPhone || b.mobileNumber || b.phone,
+
+      // kyc
+      aadharNumber: b.aadharNumber,
+      panNumber: b.panNumber,
+
+      // assignment (optional at create)
+      assignedTo: b.assignedTo,
+      assignedToEmail: b.assignedToEmail,
+      assignedToId: isObjectId(b.assignedToId) ? b.assignedToId : undefined,
+    });
+
+    return res.status(201).json({ success: true, message: "Enquiry created", data: doc });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/* ---------------------------- UPDATE ---------------------------- */
+export const updateEnquiry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isObjectId(id)) {
+      return res.status(400).json({ success: false, message: "Invalid id" });
+    }
+    const b = req.body || {};
+    const doc = await Enquiry.findByIdAndUpdate(id, b, { new: true });
+    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
+    return res.json({ success: true, message: "Enquiry updated", data: doc });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/* ----------------------- ASSIGN to DSE -------------------------- */
+/* Body: { enquiryId, assigneeId?, assignee } */
+export const assignEnquiry = async (req, res) => {
+  try {
+    const { enquiryId, assigneeId, assignee } = req.body || {};
+
+    if (!isObjectId(enquiryId)) {
+      return res.status(400).json({ success: false, message: "Invalid enquiryId" });
+    }
+    if (!assigneeId && !assignee) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Provide assigneeId or assignee" });
+    }
+
+    const update = { status: "C1" }; // bump to C1 on assignment
+
+    // If ObjectId provided, link to User
+    if (assigneeId && isObjectId(assigneeId)) {
+      update.assignedToId = new mongoose.Types.ObjectId(assigneeId);
+
+      // Optional: fetch to store readable name/email snapshot
+      try {
+        const u = await User.findById(assigneeId).select("name email");
+        if (u) {
+          update.assignedTo = u.name;
+          update.assignedToEmail = u.email;
+        }
+      } catch {
+        /* ignore lookup failure */
+      }
+    }
+
+    // Always keep whatever was passed as a traceable label
+    if (assignee) {
+      update.assignedTo = update.assignedTo || assignee;
+      if (!update.assignedToEmail && assignee.includes("@")) {
+        update.assignedToEmail = assignee;
+      }
+    }
+
+    const doc = await Enquiry.findByIdAndUpdate(enquiryId, update, { new: true });
+    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
+
+    return res.json({ success: true, message: "Assigned", data: doc });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+/* -------------------- DSE Update (status/message) --------------- */
+/* PATCH /enquiries/:id/dse-update  Body: { status?: "C0"|"C1"|"C2"|"C3", message?: string } */
+export const dseUpdateEnquiry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isObjectId(id)) {
+      return res.status(400).json({ success: false, message: "Invalid id" });
+    }
+
+    const { status, message } = req.body || {};
+    const allowed = new Set(["C0", "C1", "C2", "C3"]);
+    const set = {};
+
+    if (status) {
+      if (!allowed.has(status)) {
+        return res.status(400).json({ success: false, message: "Invalid status" });
+      }
+      set.status = status;
+    }
+
+    const pushUpdate =
+      message || status
+        ? {
+            dseUpdates: {
+              byUser: req.user?._id || undefined,
+              byName: req.user?.name || undefined,
+              message: message || "",
+              statusFrom: undefined, // could be set if you fetch the doc first
+              statusTo: status || undefined,
+              at: new Date(),
+            },
+          }
+        : null;
+
+    const doc = await Enquiry.findByIdAndUpdate(
+      id,
+      {
+        ...(Object.keys(set).length ? { $set: set } : {}),
+        ...(pushUpdate ? { $push: pushUpdate } : {}),
+      },
+      { new: true }
+    );
+
+    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
+    return res.json({ success: true, data: doc });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
   }
 };
