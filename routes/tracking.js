@@ -607,4 +607,182 @@ router.get("/report/summary/:id.csv", async (req, res) => {
   }
 });
 
+function filterByAccuracy(points, maxAcc) {
+  if (!maxAcc) return points;
+  return points.filter((p) => typeof p.acc !== "number" || p.acc <= maxAcc);
+}
+
+function sampleByMinSeconds(points, minSeconds) {
+  if (!minSeconds || minSeconds <= 0) return points;
+  const out = [];
+  let lastTs = 0;
+  for (const p of points) {
+    const t = new Date(p.ts).getTime();
+    if (!lastTs || (t - lastTs) / 1000 >= minSeconds) {
+      out.push(p);
+      lastTs = t;
+    }
+  }
+  return out;
+}
+
+function toCoords(points) {
+  return points.map((p) => [p.lat, p.lon]); // [lat, lon] for Leaflet Polyline
+}
+
+function routeStats(points, opts = {}) {
+  // assumes points are sorted by ts ascending
+  let distanceKm = 0;
+  let prev = null;
+  const maxJumpKm = opts.maxJumpKm ?? 10;
+
+  for (const p of points) {
+    if (!prev) {
+      prev = p;
+      continue;
+    }
+    const d = haversineKm(prev.lat, prev.lon, p.lat, p.lon);
+    if (d <= maxJumpKm) distanceKm += d;
+    prev = p;
+  }
+  return {
+    first: points[0]?.ts || null,
+    last: points[points.length - 1]?.ts || null,
+    pings: points.length,
+    distanceKm: Number(distanceKm.toFixed(2)),
+  };
+}
+
+/* ====================== DAY TRACK ======================
+GET /api/tracking/track/day/:id?date=YYYY-MM-DD&maxAcc=500&sampleSec=60
+Returns:
+{
+  date, userId, points: [...], coords: [[lat,lon]..], stats: {...}
+}
+========================================================= */
+router.get("/track/day/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const date = (req.query.date || ymdUTC(new Date())).toString();
+    const maxAcc = Number(req.query.maxAcc || 500);
+    const sampleSec = Number(req.query.sampleSec || 0);
+
+    const from = startOfDayUTC(date);
+    const to = endOfDayUTC(date);
+
+    let pts = await LocationPoint.find({
+      user: id,
+      ts: { $gte: from, $lte: to },
+    })
+      .sort({ ts: 1 })
+      .lean();
+
+    pts = filterByAccuracy(pts, maxAcc);
+    pts = sampleByMinSeconds(pts, sampleSec);
+
+    const coords = toCoords(pts);
+    const stats = routeStats(pts);
+
+    res.json({
+      userId: id,
+      date,
+      points: pts,
+      coords,
+      stats,
+    });
+  } catch (e) {
+    console.error("GET /track/day/:id error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* ====================== RANGE TRACK (grouped by day) ======================
+GET /api/tracking/track/range/:id?from=ISO&to=ISO&maxAcc=500&sampleSec=60
+
+Returns:
+{
+  userId, from, to, days: [
+    { date, points:[...], coords:[[lat,lon]...], stats:{...} }
+  ]
+}
+========================================================================= */
+router.get("/track/range/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const from = normDate(req.query.from, new Date(Date.now() - 7 * 864e5));
+    const to = normDate(req.query.to, new Date());
+    const maxAcc = Number(req.query.maxAcc || 500);
+    const sampleSec = Number(req.query.sampleSec || 0);
+
+    let pts = await LocationPoint.find({
+      user: id,
+      ts: { $gte: from, $lte: to },
+    })
+      .sort({ ts: 1 })
+      .lean();
+
+    pts = filterByAccuracy(pts, maxAcc);
+    pts = sampleByMinSeconds(pts, sampleSec);
+
+    // group by day
+    const byDay = new Map();
+    for (const p of pts) {
+      const key = ymdUTC(p.ts);
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(p);
+    }
+
+    const days = [];
+    for (const [date, arr] of byDay.entries()) {
+      const coords = toCoords(arr);
+      const stats = routeStats(arr);
+      days.push({ date, points: arr, coords, stats });
+    }
+    days.sort((a, b) => (a.date < b.date ? -1 : 1));
+
+    res.json({
+      userId: id,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      days,
+    });
+  } catch (e) {
+    console.error("GET /track/range/:id error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* ================ CSV for a day track =================
+GET /api/tracking/export/track/day/:id.csv?date=YYYY-MM-DD&maxAcc=500&sampleSec=60
+====================================================== */
+router.get("/export/track/day/:id.csv", async (req, res) => {
+  try {
+    const json = await new Promise((resolve, reject) => {
+      router.handle(
+        { ...req, method: "GET", url: `/track/day/${req.params.id}` },
+        { json: resolve, status: () => ({ json: reject }) },
+        () => {}
+      );
+    });
+
+    const rows = json.points.map((p) => ({
+      Timestamp: p.ts,
+      Latitude: p.lat,
+      Longitude: p.lon,
+      Accuracy_m: p.acc ?? "",
+      Speed: p.speed ?? "",
+      Heading: p.heading ?? "",
+      Provider: p.provider ?? "",
+    }));
+
+    const csv = new Json2Csv().parse(rows);
+    res.header("Content-Type", "text/csv");
+    res.attachment(`track-${json.userId}-${json.date}.csv`);
+    res.send(csv);
+  } catch (e) {
+    console.error("GET /export/track/day/:id.csv error:", e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 export default router;
