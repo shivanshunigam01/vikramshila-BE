@@ -4,10 +4,11 @@ import Lead from "../models/Lead.js";
 import Enquiry from "../models/Enquiry.js";
 import Quotation from "../models/Quotation.js";
 import InternalCosting from "../models/InternalCosting.js";
-import TrackingPing from "../models/TrackingPing.js"; // new (see section 3)
+import TrackingPing from "../models/TrackingPing.js";
 
 // ---- Helpers ----
 const toObjectId = (v) => {
+  if (!v) return null;
   try {
     return new mongoose.Types.ObjectId(v);
   } catch {
@@ -16,22 +17,16 @@ const toObjectId = (v) => {
 };
 
 const granularityToDateTrunc = (granularity = "day") => {
-  // supported: day | week | month | year
   const units = new Set(["day", "week", "month", "year"]);
   return units.has(granularity) ? granularity : "day";
 };
 
+// Proper $match for createdAt range
 const buildDateMatch = (from, to) => {
-  const match = {};
-  if (from || to) {
-    match.$expr = {
-      $and: [
-        from ? { $gte: ["$createdAt", new Date(from)] } : { $gte: [1, 1] },
-        to ? { $lte: ["$createdAt", new Date(to)] } : { $gte: [1, 1] },
-      ],
-    };
-  }
-  return match;
+  const createdAt = {};
+  if (from) createdAt.$gte = new Date(from);
+  if (to) createdAt.$lte = new Date(to);
+  return Object.keys(createdAt).length ? { $match: { createdAt } } : null;
 };
 
 // $dateTrunc stage builder
@@ -49,12 +44,12 @@ const withDateBucket = (granularity = "day") => [
   },
 ];
 
-// Common lookup to User to derive branch/assignee name (if you store it there)
-const lookupAssignee = () => [
+// Lookup to User with dynamic localField (handles Leads vs Enquiries)
+const lookupAssignee = (localField) => [
   {
     $lookup: {
       from: "users",
-      localField: "assignedToId",
+      localField,
       foreignField: "_id",
       as: "assignee",
       pipeline: [{ $project: { name: 1, email: 1, branch: 1 } }],
@@ -63,9 +58,71 @@ const lookupAssignee = () => [
   { $unwind: { path: "$assignee", preserveNullAndEmptyArrays: true } },
 ];
 
+// CSV response helper
+const sendCSV = (res, rows, filename = "report.csv") => {
+  const arr = Array.isArray(rows) ? rows : [];
+  if (arr.length === 0) {
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    return res.send("message,No data");
+  }
+  const headers = Array.from(new Set(arr.flatMap((r) => Object.keys(r))));
+  const escape = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = typeof v === "string" ? v : JSON.stringify(v);
+    const needs = s.includes(",") || s.includes("\n") || s.includes('"');
+    return needs ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [
+    headers.join(","),
+    ...arr.map((r) => headers.map((h) => escape(r[h])).join(",")),
+  ];
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(lines.join("\n"));
+};
+
+// ===================== FILTERS (for dropdowns) =====================
+// GET /api/reports/filters
+export const getFilters = async (req, res, next) => {
+  try {
+    // Branches from users with a branch value
+    const branches = await mongoose.connection
+      .collection("users")
+      .distinct("branch", { branch: { $exists: true, $ne: null } });
+
+    // DSE users (optional: filter by role if you tag users)
+    const dses = await mongoose.connection
+      .collection("users")
+      .find({}, { projection: { name: 1 } })
+      .limit(1000)
+      .toArray();
+    const dseOptions = dses.map((u) => ({ id: u._id, name: u.name || "" }));
+
+    // Segments/models from Leads (C3 or all)
+    const segments = await Lead.distinct("productCategory", {
+      productCategory: { $exists: true, $ne: null },
+    });
+    const models = await Lead.distinct("productTitle", {
+      productTitle: { $exists: true, $ne: null },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        branches,
+        dses: dseOptions,
+        segments,
+        models,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
 // ===================== 1) Enquiry Report =====================
-// GET /api/reports/enquiries?granularity=day&from=...&to=...&branchId=&dseId=&status=all|C0|C1...
-// optional: source=xyz (if you add "source" in Enquiry)
+// GET /api/reports/enquiries?granularity=day&from=&to=&branchId=&dseId=&status=&source=&format=csv
 export const getEnquiryReport = async (req, res, next) => {
   try {
     const {
@@ -76,30 +133,43 @@ export const getEnquiryReport = async (req, res, next) => {
       dseId,
       status,
       source,
+      format,
     } = req.query;
 
     const match = {};
     if (status && status !== "all") match.status = status;
-    if (source) match.source = source; // tolerate missing field
-    if (dseId) match.assignedToId = toObjectId(dseId);
+    if (source) match.source = source;
 
-    const dateMatch = buildDateMatch(from, to);
+    // Accept either assignedToId or dseId stored on Enquiry
+    if (dseId) {
+      const oid = toObjectId(dseId);
+      match.$or = [{ assignedToId: oid }, { dseId: oid }];
+    }
 
-    const pipeline = [
-      ...(from || to ? [dateMatch] : []),
+    const stages = [
+      ...(buildDateMatch(from, to) ? [buildDateMatch(from, to)] : []),
       ...(Object.keys(match).length ? [{ $match: match }] : []),
-      ...lookupAssignee(),
+
+      // Prefer assignedToId; fallback to dseId
+      {
+        $addFields: {
+          _assigneeId: {
+            $ifNull: ["$assignedToId", "$dseId"],
+          },
+        },
+      },
+      ...lookupAssignee("_assigneeId"),
       ...withDateBucket(granularity),
-      // optional branch filter if provided and your User has .branch
       ...(branchId ? [{ $match: { "assignee.branch": branchId } }] : []),
+
       {
         $group: {
           _id: {
             timeBucket: "$timeBucket",
             branch: "$assignee.branch",
-            dseId: "$assignedToId",
+            dseId: "$_assigneeId",
             status: "$status",
-            source: "$source", // may be undefined if field absent
+            source: "$source",
           },
           count: { $sum: 1 },
         },
@@ -118,7 +188,11 @@ export const getEnquiryReport = async (req, res, next) => {
       { $sort: { timeBucket: 1 } },
     ];
 
-    const data = await Enquiry.aggregate(pipeline);
+    const data = await Enquiry.aggregate(stages);
+
+    if (String(format).toLowerCase() === "csv") {
+      return sendCSV(res, data, "enquiries.csv");
+    }
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -126,20 +200,25 @@ export const getEnquiryReport = async (req, res, next) => {
 };
 
 // ===================== 2) Lead Conversion Report (C0→C3) =====================
-// GET /api/reports/conversions?granularity=week&from=&to=&branchId=&dseId=
+// GET /api/reports/conversions?granularity=week&from=&to=&branchId=&dseId=&format=csv
 export const getLeadConversionReport = async (req, res, next) => {
   try {
-    const { granularity = "week", from, to, branchId, dseId } = req.query;
+    const {
+      granularity = "week",
+      from,
+      to,
+      branchId,
+      dseId,
+      format,
+    } = req.query;
 
     const match = {};
     if (dseId) match.assignedToId = toObjectId(dseId);
 
-    const dateMatch = buildDateMatch(from, to);
-
     const pipeline = [
-      ...(from || to ? [dateMatch] : []),
+      ...(buildDateMatch(from, to) ? [buildDateMatch(from, to)] : []),
       ...(Object.keys(match).length ? [{ $match: match }] : []),
-      ...lookupAssignee(),
+      ...lookupAssignee("assignedToId"),
       ...withDateBucket(granularity),
       ...(branchId ? [{ $match: { "assignee.branch": branchId } }] : []),
       {
@@ -148,7 +227,7 @@ export const getLeadConversionReport = async (req, res, next) => {
             timeBucket: "$timeBucket",
             branch: "$assignee.branch",
             dseId: "$assignedToId",
-            status: "$status", // C0/C1/C2/C3
+            status: "$status",
           },
           count: { $sum: 1 },
         },
@@ -160,9 +239,7 @@ export const getLeadConversionReport = async (req, res, next) => {
             branch: "$_id.branch",
             dseId: "$_id.dseId",
           },
-          byStage: {
-            $push: { k: "$_id.status", v: "$count" },
-          },
+          byStage: { $push: { k: "$_id.status", v: "$count" } },
           total: { $sum: "$count" },
         },
       },
@@ -172,7 +249,7 @@ export const getLeadConversionReport = async (req, res, next) => {
           timeBucket: "$_id.timeBucket",
           branch: "$_id.branch",
           dseId: "$_id.dseId",
-          byStage: { $arrayToObject: "$byStage" }, // {C0: n, C1: n, ...}
+          byStage: { $arrayToObject: "$byStage" },
           total: 1,
           conversionC0toC3: {
             $let: {
@@ -200,6 +277,10 @@ export const getLeadConversionReport = async (req, res, next) => {
     ];
 
     const data = await Lead.aggregate(pipeline);
+
+    if (String(format).toLowerCase() === "csv") {
+      return sendCSV(res, data, "conversions.csv");
+    }
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -207,7 +288,7 @@ export const getLeadConversionReport = async (req, res, next) => {
 };
 
 // ===================== 3) Sales (C3) Report =====================
-// GET /api/reports/sales-c3?granularity=month&from=&to=&branchId=&dseId=&segment=&model=
+// GET /api/reports/sales-c3?granularity=month&from=&to=&branchId=&dseId=&segment=&model=&format=csv
 export const getSalesC3Report = async (req, res, next) => {
   try {
     const {
@@ -218,19 +299,18 @@ export const getSalesC3Report = async (req, res, next) => {
       dseId,
       segment,
       model,
+      format,
     } = req.query;
 
-    const match = { status: "C3" }; // sold
+    const match = { status: "C3" };
     if (dseId) match.assignedToId = toObjectId(dseId);
     if (segment) match.productCategory = segment;
     if (model) match.productTitle = model;
 
-    const dateMatch = buildDateMatch(from, to);
-
     const pipeline = [
-      ...(from || to ? [dateMatch] : []),
+      ...(buildDateMatch(from, to) ? [buildDateMatch(from, to)] : []),
       ...(Object.keys(match).length ? [{ $match: match }] : []),
-      ...lookupAssignee(),
+      ...lookupAssignee("assignedToId"),
       ...withDateBucket(granularity),
       ...(branchId ? [{ $match: { "assignee.branch": branchId } }] : []),
       {
@@ -260,6 +340,10 @@ export const getSalesC3Report = async (req, res, next) => {
     ];
 
     const data = await Lead.aggregate(pipeline);
+
+    if (String(format).toLowerCase() === "csv") {
+      return sendCSV(res, data, "sales_c3.csv");
+    }
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -267,29 +351,14 @@ export const getSalesC3Report = async (req, res, next) => {
 };
 
 // ===================== 4) Internal Costing Report =====================
-// GET /api/reports/internal-costing?granularity=month&from=&to=&branchId=
+// GET /api/reports/internal-costing?granularity=month&from=&to=&branchId=&format=csv
 export const getInternalCostingReport = async (req, res, next) => {
   try {
-    const { granularity = "month", from, to, branchId } = req.query;
-
-    const dateMatch = {};
-    if (from || to) {
-      dateMatch.$match = {
-        ...(from ? { createdAt: { $gte: new Date(from) } } : {}),
-        ...(to
-          ? {
-              ...(dateMatch.$match || {}),
-              createdAt: {
-                ...(dateMatch.$match?.createdAt || {}),
-                $lte: new Date(to),
-              },
-            }
-          : {}),
-      };
-    }
+    const { granularity = "month", from, to, branchId, format } = req.query;
 
     const pipeline = [
-      ...(from || to ? [dateMatch] : []),
+      ...(buildDateMatch(from, to) ? [buildDateMatch(from, to)] : []),
+
       // link to lead -> user (branch)
       {
         $lookup: {
@@ -299,7 +368,7 @@ export const getInternalCostingReport = async (req, res, next) => {
           as: "lead",
           pipeline: [
             { $project: { assignedToId: 1, createdAt: 1 } },
-            ...lookupAssignee(),
+            ...lookupAssignee("assignedToId"),
           ],
         },
       },
@@ -307,6 +376,7 @@ export const getInternalCostingReport = async (req, res, next) => {
       { $set: { assignee: "$lead.assignee" } },
       ...(branchId ? [{ $match: { "assignee.branch": branchId } }] : []),
       ...withDateBucket(granularity),
+
       {
         $group: {
           _id: {
@@ -342,6 +412,10 @@ export const getInternalCostingReport = async (req, res, next) => {
     ];
 
     const data = await InternalCosting.aggregate(pipeline);
+
+    if (String(format).toLowerCase() === "csv") {
+      return sendCSV(res, data, "internal_costing.csv");
+    }
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -349,7 +423,7 @@ export const getInternalCostingReport = async (req, res, next) => {
 };
 
 // ===================== 5) DSE Movement (Tracking) =====================
-// POST /api/reports/dse/ping  body: { userId, lat, lng, speed?, accuracy?, deviceId? }
+// POST /api/reports/dse/ping
 export const postTrackingPing = async (req, res, next) => {
   try {
     const { userId, lat, lng, speed, accuracy, deviceId } = req.body;
@@ -395,7 +469,6 @@ export const getDseMovementPolyline = async (req, res, next) => {
       .sort({ createdAt: 1 })
       .lean();
 
-    // Polyline array: [[lng,lat], ...]
     const polyline = pings.map((p) => p.location.coordinates);
     res.json({ success: true, points: polyline, count: pings.length });
   } catch (e) {
@@ -433,7 +506,6 @@ export const getDseMovementGeoJSON = async (req, res, next) => {
       properties: { ts: p.createdAt },
     }));
 
-    // Also a LineString for the route
     const line = {
       type: "Feature",
       geometry: {
@@ -452,10 +524,10 @@ export const getDseMovementGeoJSON = async (req, res, next) => {
   }
 };
 
-// GET /api/reports/dse/movement/summary?userId=&granularity=day&from=&to=
+// GET /api/reports/dse/movement/summary?userId=&granularity=day&from=&to=&format=csv
 export const getDseMovementSummary = async (req, res, next) => {
   try {
-    const { userId, granularity = "day", from, to } = req.query;
+    const { userId, granularity = "day", from, to, format } = req.query;
     if (!userId)
       return res
         .status(400)
@@ -475,9 +547,6 @@ export const getDseMovementSummary = async (req, res, next) => {
         $group: {
           _id: "$timeBucket",
           pings: { $sum: 1 },
-          // naive distance approximation between sequential points (in km) on server side
-          // Note: for high accuracy, compute on client or use $function with Haversine across sorted docs.
-          // Here we just return ping count; distance can be computed on FE when plotting.
         },
       },
       {
@@ -491,6 +560,10 @@ export const getDseMovementSummary = async (req, res, next) => {
     ];
 
     const data = await TrackingPing.aggregate(pipeline);
+
+    if (String(format).toLowerCase() === "csv") {
+      return sendCSV(res, data, "dse_movement_summary.csv");
+    }
     res.json({ success: true, data });
   } catch (e) {
     next(e);

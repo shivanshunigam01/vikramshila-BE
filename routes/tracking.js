@@ -75,38 +75,72 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
    Ingestion: save multiple locations
    Body: { points: [{ ts, lat, lon, acc?, speed?, heading?, battery?, provider? }, ...] }
 ============================================================ */
-router.post("/locations", async (req, res) => {
+// ✅ Protect with auth (either router.use(auth) above, or inline here)
+router.post("/locations", auth, async (req, res) => {
   try {
+    // auth middleware must set req.user = { id: ... }
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
     const userId = req.user.id;
 
+    // detect client IP and UA robustly (works with proxies if app.set('trust proxy', true))
+    const xfwd = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
     const ip =
-      (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
+      xfwd ||
       req.ip ||
       req.connection?.remoteAddress ||
+      req.socket?.remoteAddress ||
       null;
     const ua = req.headers["user-agent"] || null;
 
-    const { points } = req.body;
+    const { points } = req.body || {};
     if (!Array.isArray(points) || points.length === 0) {
       return res.status(400).json({ message: "No points" });
     }
 
-    const docs = points.map((p) => ({
-      user: userId,
-      ts: new Date(p.ts),
-      lat: p.lat,
-      lon: p.lon,
-      acc: p.acc,
-      speed: p.speed,
-      heading: p.heading,
-      battery: p.battery,
-      provider: p.provider,
-      ip,
-      ua,
-    }));
+    // helper: parse & validate a single point
+    const toDoc = (p) => {
+      // ts: allow ms epoch or ISO string
+      let ts = null;
+      if (typeof p.ts === "number") ts = new Date(p.ts);
+      else if (typeof p.ts === "string") ts = new Date(p.ts);
+      if (!ts || isNaN(ts.getTime())) return null;
+
+      const lat = Number(p.lat);
+      const lon = Number(p.lon);
+      if (!isFinite(lat) || !isFinite(lon)) return null;
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+
+      const doc = {
+        user: userId,
+        ts,
+        lat,
+        lon,
+        acc: p.acc != null ? Number(p.acc) : undefined,
+        speed: p.speed != null ? Number(p.speed) : undefined,
+        heading: p.heading != null ? Number(p.heading) : undefined,
+        battery: p.battery != null ? Number(p.battery) : undefined,
+        provider: p.provider ?? null,
+        ip,
+        ua,
+      };
+
+      // strip NaN fields
+      for (const k of ["acc", "speed", "heading", "battery"]) {
+        if (doc[k] != null && !isFinite(doc[k])) delete doc[k];
+      }
+      return doc;
+    };
+
+    const docs = points.map(toDoc).filter(Boolean); // drop invalid points silently
+
+    if (docs.length === 0) {
+      return res.status(400).json({ message: "All points invalid" });
+    }
 
     await LocationPoint.insertMany(docs, { ordered: false });
-    res.json({ saved: docs.length });
+    res.json({ saved: docs.length, received: points.length });
   } catch (err) {
     console.error("POST /locations error:", err);
     res.status(500).json({ message: "Server error" });
@@ -121,10 +155,21 @@ router.get("/user/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { from, to } = req.query;
+
     const q = { user: id };
-    if (from || to) q.ts = {};
-    if (from) q.ts.$gte = new Date(from);
-    if (to) q.ts.$lte = new Date(to);
+    if (from || to) {
+      q.ts = {};
+      if (from) {
+        const f = new Date(from);
+        if (!isNaN(f.getTime())) q.ts.$gte = f;
+      }
+      if (to) {
+        const t = new Date(to);
+        if (!isNaN(t.getTime())) q.ts.$lte = t;
+      }
+      // if both were invalid, remove ts filter
+      if (Object.keys(q.ts).length === 0) delete q.ts;
+    }
 
     const points = await LocationPoint.find(q).sort({ ts: 1 }).limit(5000);
     res.json(points);
