@@ -2,22 +2,6 @@ const Grievance = require("../models/Grievance");
 const RESP = require("../utils/response");
 const sendMail = require("../utils/sendMail");
 
-const dateFilter = (filter) => {
-  const now = new Date();
-  let from;
-  if (filter === "week") {
-    from = new Date(now);
-    from.setDate(now.getDate() - 7);
-  } else if (filter === "month") {
-    from = new Date(now);
-    from.setMonth(now.getMonth() - 1);
-  } else if (filter === "year") {
-    from = new Date(now);
-    from.setFullYear(now.getFullYear() - 1);
-  }
-  return from ? { $gte: from, $lte: now } : undefined;
-};
-
 exports.create = async (req, res) => {
   try {
     const grievanceData = {
@@ -31,6 +15,7 @@ exports.create = async (req, res) => {
       consentCall: req.body.consentCall || false,
       state: req.body.state || "",
       pincode: req.body.pincode || "",
+      status: "pending",
     };
 
     const grievance = await Grievance.create(grievanceData);
@@ -48,12 +33,6 @@ exports.create = async (req, res) => {
           <p><b>Type:</b> ${grievance.type}</p>
           <p><b>Subject:</b> ${grievance.subject}</p>
           <p><b>Message:</b> ${grievance.message}</p>
-          <p><b>WhatsApp Consent:</b> ${
-            grievance.whatsappConsent ? "Yes" : "No"
-          }</p>
-          <p><b>Call Consent:</b> ${grievance.consentCall ? "Yes" : "No"}</p>
-          <p><b>State:</b> ${grievance.state}</p>
-          <p><b>Pincode:</b> ${grievance.pincode}</p>
         `,
       });
     } catch (e) {
@@ -67,12 +46,35 @@ exports.create = async (req, res) => {
 };
 
 exports.list = async (req, res) => {
-  const { filter } = req.query;
-  const q = {};
-  if (filter) q.createdAt = dateFilter(filter);
-
-  const items = await Grievance.find(q).sort({ createdAt: -1 });
+  const items = await Grievance.find({}).sort({ createdAt: -1 });
   return RESP.ok(res, items);
+};
+
+exports.markInProgress = async (req, res) => {
+  const item = await Grievance.findByIdAndUpdate(
+    req.params.id,
+    { status: "in-progress" },
+    { new: true }
+  );
+  if (!item) return RESP.bad(res, "Not found", 404);
+
+  // Notify user
+  if (item.email && item.email !== "N/A") {
+    try {
+      await sendMail({
+        to: item.email,
+        subject: `Your grievance is under execution`,
+        html: `
+          <p>Dear ${item.fullName},</p>
+          <p>Your grievance titled <b>${item.subject}</b> is now under execution. Our team is working on it and will update you once it is resolved.</p>
+        `,
+      });
+    } catch (e) {
+      console.error("Failed to send execution email:", e.message);
+    }
+  }
+
+  return RESP.ok(res, item, "Marked as in-progress");
 };
 
 exports.markResolved = async (req, res) => {
@@ -82,6 +84,23 @@ exports.markResolved = async (req, res) => {
     { new: true }
   );
   if (!item) return RESP.bad(res, "Not found", 404);
+
+  // Notify user
+  if (item.email && item.email !== "N/A") {
+    try {
+      await sendMail({
+        to: item.email,
+        subject: `Your grievance has been resolved`,
+        html: `
+          <p>Dear ${item.fullName},</p>
+          <p>Your grievance titled <b>${item.subject}</b> has been successfully resolved. Thank you for your patience.</p>
+        `,
+      });
+    } catch (e) {
+      console.error("Failed to send resolution email:", e.message);
+    }
+  }
+
   return RESP.ok(res, item, "Marked resolved");
 };
 
