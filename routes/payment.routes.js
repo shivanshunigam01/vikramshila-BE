@@ -46,12 +46,22 @@ const razor = new Razorpay({
 ========================= */
 router.post("/razorpay/order", async (req, res) => {
   try {
+    const keyId = (process.env.RAZORPAY_KEY_ID || "").trim();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || "").trim();
+    if (!keyId || !keySecret) {
+      return res.status(500).json({ error: "Razorpay keys missing on server" });
+    }
+
     const order = await razor.orders.create({
-      amount: 75 * 100, // in paise
+      amount: 1 * 100,
       currency: "INR",
       receipt: `cibil_${Date.now()}`,
     });
-    res.json(order);
+
+    console.log("Surepass URL:", SUREPASS_BASE_URL);
+    console.log("Surepass token prefix:", SUREPASS_TOKEN?.slice(0, 12));
+    // IMPORTANT: send the key used to create this order
+    res.json({ ...order, key_id: keyId });
   } catch (err) {
     console.error("Razorpay order error:", err?.response?.data || err.message);
     res.status(500).json({ error: "Failed to create order" });
@@ -82,6 +92,18 @@ router.post("/razorpay/verify-cibil", async (req, res) => {
         .status(400)
         .json({ ok: false, error: "name, mobile, and pan are required" });
     }
+    const mobileStr = String(mobile);
+    const panStr = String(pan).toUpperCase();
+    if (!/^\d{10}$/.test(mobileStr)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "mobile must be 10 digits" });
+    }
+    if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(panStr)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "PAN format invalid (ABCDE1234F)" });
+    }
 
     // Verify Razorpay signature
     const body = `${razorpay_order_id}|${razorpay_payment_id}`;
@@ -89,40 +111,66 @@ router.post("/razorpay/verify-cibil", async (req, res) => {
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(body)
       .digest("hex");
-
     if (expectedSignature !== razorpay_signature) {
       return res
         .status(400)
         .json({ ok: false, error: "Invalid Razorpay signature" });
     }
 
-    // Payment verified → call Surepass JSON API
+    // Call Surepass
     const spRes = await axios.post(
       SUREPASS_JSON_ENDPOINT,
-      { name, consent: "Y", mobile, pan },
+      { name, consent: "Y", mobile: mobileStr, pan: panStr },
       {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${SUREPASS_TOKEN}`,
         },
-        timeout: 30000,
+        timeout: 45000,
+        validateStatus: () => true, // handle non-2xx ourselves
       }
     );
+
+    if (spRes.status < 200 || spRes.status >= 300) {
+      // Bubble up the real Surepass error
+      console.error("Surepass non-2xx:", spRes.status, spRes.data);
+      return res.status(spRes.status).json({
+        ok: false,
+        source: "surepass",
+        status: spRes.status,
+        error: spRes.data?.message || spRes.data?.error || "Surepass error",
+        details: spRes.data,
+      });
+    }
 
     const data = spRes.data?.data || {};
     return res.json({
       ok: true,
-      score: data.credit_score,
-      report_number: data.credit_report?.CreditProfileHeader?.ReportNumber,
-      report_date: data.credit_report?.CreditProfileHeader?.ReportDate,
-      report_time: data.credit_report?.CreditProfileHeader?.ReportTime,
+      score: data.credit_score ?? null,
+      report_number:
+        data.credit_report?.CreditProfileHeader?.ReportNumber ?? null,
+      report_date: data.credit_report?.CreditProfileHeader?.ReportDate ?? null,
+      report_time: data.credit_report?.CreditProfileHeader?.ReportTime ?? null,
       raw: data,
     });
   } catch (err) {
-    console.error("verify-cibil error:", err?.response?.data || err.message);
-    res
-      .status(500)
-      .json({ ok: false, error: "Failed to verify payment or fetch CIBIL" });
+    // Axios/network diagnostics
+    const ax = err && err.isAxiosError ? err : null;
+    const status = ax?.response?.status || 500;
+    const details = ax?.response?.data ||
+      ax?.toJSON?.() || {
+        message: err?.message,
+        code: err?.code,
+        errno: err?.errno,
+        syscall: err?.syscall,
+      };
+    console.error("verify-cibil fatal:", status, details);
+    return res.status(status).json({
+      ok: false,
+      source: "server",
+      error: "Failed to verify payment or fetch CIBIL",
+      details,
+    });
   }
 });
 
