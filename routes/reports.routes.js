@@ -6,23 +6,31 @@ import {
   getLeadConversionReport,
   getSalesC3Report,
   getInternalCostingReport,
-  postTrackingPing,
-  getDseMovementPolyline,
-  getDseMovementGeoJSON,
-  getDseMovementSummary,
+  assignLead,
+  assignEnquiry,
 } from "../controllers/reports.controller.js";
 
-const r = express.Router();
+const router = express.Router();
 
-r.get("/reports/filters", getFilters);
-r.get("/reports/enquiries", getEnquiryReport);
-r.get("/reports/conversions", getLeadConversionReport);
-r.get("/reports/sales-c3", getSalesC3Report);
-r.get("/reports/internal-costing", getInternalCostingReport);
+/**
+ * MOUNT at: app.use("/api/reports", router)
+ *
+ * Endpoints:
+ *   GET  /api/reports/filters
+ *   GET  /api/reports/enquiries
+ *   GET  /api/reports/conversions
+ *   GET  /api/reports/sales-c3
+ *   GET  /api/reports/internal-costing
+ *   POST /api/reports/assign-lead
+ *   POST /api/reports/assign-enquiry
+ */
 
-r.post("/reports/dse/ping", postTrackingPing);
-r.get("/reports/dse/movement/polyline", getDseMovementPolyline);
-r.get("/reports/dse/movement/geojson", getDseMovementGeoJSON);
-r.get("/reports/dse/movement/summary", getDseMovementSummary);
+router.get("/filters", getFilters);
+router.get("/enquiries", getEnquiryReport);
+router.get("/conversions", getLeadConversionReport);
+router.get("/sales-c3", getSalesC3Report);
+router.get("/internal-costing", getInternalCostingReport);
+router.post("/assign-lead", assignLead);
+router.post("/assign-enquiry", assignEnquiry);
 
-export default r;
+export default router;
