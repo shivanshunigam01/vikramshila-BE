@@ -550,49 +550,35 @@ export const getAllUsers = async (_req, res) => {
 // --- Register DSE ---
 export const registerDse = async (req, res) => {
   try {
-    const { name, phone, password } = req.body || {};
+    const { name, phone, password } = req.body;
 
-    // Basic required fields
     if (!name || !phone || !password) {
-      return bad(res, "name, phone and password are required", 400);
+      return res.status(400).json({ message: "name, phone and password are required" });
     }
 
-    // Uniqueness
     const exists = await Dse.findOne({ phone });
-    if (exists) return bad(res, "Phone already registered", 400);
+    if (exists) return res.status(400).json({ message: "Phone already registered" });
 
-    // Photo from multer (optional)
     const photoUrl = req.file?.path || "";
     const photoPublicId = req.file?.filename || "";
 
-    const dse = new Dse({ name: String(name).trim(), phone: String(phone).trim(), photoUrl, photoPublicId });
-    await dse.setPassword(String(password));
+    const dse = new Dse({ name, phone, photoUrl, photoPublicId });
+    await dse.setPassword(password);
     await dse.save();
 
-    const token = jwt.sign(
-      { id: dse._id, name: dse.name, role: dse.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "180d" }
-    );
-
-    return ok(
-      res,
-      {
-        user: {
-          id: dse._id,
-          name: dse.name,
-          phone: dse.phone,
-          role: dse.role,
-          photoUrl: dse.photoUrl,
-        },
-        token,
+    res.json({
+      user: {
+        id: dse._id,
+        name: dse.name,
+        phone: dse.phone,
+        role: dse.role,
+        photoUrl: dse.photoUrl,
       },
-      "DSE registered successfully"
-    );
+      token: "dummy-jwt-here"
+    });
   } catch (err) {
     console.error("registerDse error:", err);
-    // Return the error message to help you debug (still 500)
-    return bad(res, err?.message || "Server error", 500);
+    res.status(500).json({ message: err.message });
   }
 };
 
