@@ -615,6 +615,16 @@ export const loginDse = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "180d" }
     );
 
+    // ✅ Console logs on successful login
+    console.log("DSE Login Successful:");
+    console.log("ID:", dse._id.toString());
+    console.log("Name:", dse.name);
+    console.log("Phone:", dse.phone);
+    console.log("Role:", dse.role);
+    console.log("Role:", dse.photoUrl);
+    console.log("JWT Token:", token);
+    
+
     return ok(
       res,
       {
@@ -628,6 +638,7 @@ export const loginDse = async (req, res) => {
     return bad(res, "Server error", 500);
   }
 };
+
 
 export const getDseList = async (req, res) => {
   try {
