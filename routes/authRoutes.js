@@ -1,4 +1,6 @@
+// routes/auth.js  (CJS)
 const router = require("express").Router();
+
 const {
   login,
   registerUser,
@@ -16,32 +18,27 @@ const {
   getDseList,
 } = require("../controllers/authController");
 
-const { upload } = require("../middleware/upload.js"); // ✅ fixed to use require
-const Dse = require("../models/Dse");
+// ❌ Remove this — it can break if your model is ESM and it's unused anyway
+// const Dse = require("../models/Dse");
 
+const { uploadDsePhoto } = require("../middleware/upload.js");
+
+// Admin / staff
 router.post("/login", login);
-// Register new admin
-router.post("/register", registerUser);
+router.post("/register", registerUser); // admin register
 
-// router.post("/send-otp", sendOtp);
 router.post("/verify-otp", verifyOtp);
 router.post("/register-customer", registerCustomer);
 router.post("/login-customer", loginUser);
-
-router.post("/check-customer", checkCustomer); // { phone } -> { exists }
-router.post("/send-otp", sendOtp); // { phone }
-router.post("/otp-login", otpLogin); // { phone, otp, [name], [email] }
-
+router.post("/check-customer", checkCustomer);
+router.post("/send-otp", sendOtp);
+router.post("/otp-login", otpLogin);
 router.post("/users", createStaffUser);
-
-// If you want it protected, use: router.get("/", protect, getAllUsers);
 router.get("/getAllUsers", getAllUsers);
-
-// ✅ NEW: delete a user by id
 router.delete("/users/:id", deleteUser);
 
-// ✅ DSE Routes
-router.post("/register", upload.single("photo"), registerDse);
+// 🔹 DSE routes (dedicated paths; no collisions)
+router.post("/register-dse", uploadDsePhoto, registerDse);
 router.post("/login-dse", loginDse);
 router.get("/get-dse", getDseList);
 

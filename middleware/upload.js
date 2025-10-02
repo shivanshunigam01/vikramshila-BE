@@ -315,6 +315,19 @@ const storage = new CloudinaryStorage({
     allowed_formats: ["jpg", "png", "jpeg", "webp"],
   },
 });
+// DSE Photo Upload (Cloudinary)  =========================
+const dsePhotoStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "dse-photos",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    transformation: [{ width: 800, height: 800, crop: "limit" }],
+    resource_type: "image",
+  },
+});
+
+const uploadDsePhoto = multer({ storage: dsePhotoStorage }).single("photo");
+
 const upload = multer({ storage });
 
 // ================= EXPORTS =================
@@ -328,4 +341,5 @@ module.exports = {
   upload,
   uploadProductMedia: handleMixedUpload,
   uploadLeadKyc,
+  uploadDsePhoto
 };

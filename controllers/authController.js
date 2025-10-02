@@ -550,20 +550,23 @@ export const getAllUsers = async (_req, res) => {
 // --- Register DSE ---
 export const registerDse = async (req, res) => {
   try {
-    const { name, phone, password } = req.body;
+    const { name, phone, password } = req.body || {};
+
+    // Basic required fields
     if (!name || !phone || !password) {
-      return bad(res, "Missing fields", 400);
+      return bad(res, "name, phone and password are required", 400);
     }
 
+    // Uniqueness
     const exists = await Dse.findOne({ phone });
     if (exists) return bad(res, "Phone already registered", 400);
 
-    // If `upload.single('photo')` ran, Multer+Cloudinary gives us req.file
-    const photoUrl = req.file?.path || "";       // Cloudinary URL
+    // Photo from multer (optional)
+    const photoUrl = req.file?.path || "";
     const photoPublicId = req.file?.filename || "";
 
-    const dse = new Dse({ name, phone, photoUrl, photoPublicId });
-    await dse.setPassword(password);
+    const dse = new Dse({ name: String(name).trim(), phone: String(phone).trim(), photoUrl, photoPublicId });
+    await dse.setPassword(String(password));
     await dse.save();
 
     const token = jwt.sign(
@@ -588,7 +591,8 @@ export const registerDse = async (req, res) => {
     );
   } catch (err) {
     console.error("registerDse error:", err);
-    return bad(res, "Server error", 500);
+    // Return the error message to help you debug (still 500)
+    return bad(res, err?.message || "Server error", 500);
   }
 };
 
