@@ -628,7 +628,7 @@ export const loginDse = async (req, res) => {
     return ok(
       res,
       {
-        user: { id: dse._id, name: dse.name, phone: dse.phone, role: dse.role },
+        user: { id: dse._id, name: dse.name, phone: dse.phone, role: dse.role, photoUrl: dse.photoUrl },
         token,
       },
       "DSE login successful"
