@@ -62,6 +62,11 @@ function normDate(v, fallback) {
   const d = v ? new Date(v) : null;
   return isNaN(d?.getTime() ?? NaN) ? fallback : d;
 }
+router.post("/locations", async (req, res) => {
+  console.log("Received:", req.body.points?.length, req.body.points?.[0]);
+  res.json({ ok: true });
+});
+
 function byTsAsc(a, b) {
   return new Date(a.ts).getTime() - new Date(b.ts).getTime();
 }

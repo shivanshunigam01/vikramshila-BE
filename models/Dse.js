@@ -1,3 +1,4 @@
+// models/Dse.js
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -7,6 +8,10 @@ const dseSchema = new mongoose.Schema(
     phone: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
     role: { type: String, default: "dse" },
+
+    // 🔹 new photo fields
+    photoUrl: { type: String, default: "" },
+    photoPublicId: { type: String, default: "" },
   },
   { timestamps: true }
 );

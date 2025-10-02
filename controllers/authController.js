@@ -189,12 +189,10 @@ export const loginUser = async (req, res) => {
     }
 
     if (!customer.password) {
-      return res
-        .status(500)
-        .json({
-          success: false,
-          message: "User record has no password stored",
-        });
+      return res.status(500).json({
+        success: false,
+        message: "User record has no password stored",
+      });
     }
 
     const isMatch = await customer.comparePassword(password);
@@ -440,44 +438,115 @@ export const createStaffUser = async (req, res) => {
   }
 };
 
-export const getAllUsers = async (_req, res) => {
-  try {
-    const users = await User.find({})
-      .select(
-        "_id username name email role branch isActive createdAt updatedAt"
-      ) // no password
-      .sort("-createdAt")
-      .lean();
-
-    res.json({ success: true, data: users });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Failed to fetch users" });
-  }
-};
-
+// DELETE /api/users/:id   (supports deleting User or DSE; protects last admin)
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
+    const { kind } = req.query; // optional: 'user' | 'dse'
     if (!id) return bad(res, "User id required", 400);
 
-    // find first to validate + get role
-    const user = await User.findById(id).select("role");
-    if (!user) return bad(res, "User not found", 404);
+    // If explicitly deleting a staff User
+    if (kind === "user") {
+      const u = await User.findById(id).select("role");
+      if (!u) return bad(res, "User not found", 404);
 
-    // prevent deleting the last admin
-    if (user.role === "admin") {
-      const adminCount = await User.countDocuments({ role: "admin" });
-      if (adminCount <= 1) {
-        return bad(res, "Cannot delete the last admin user", 400);
+      if (u.role === "admin") {
+        const adminCount = await User.countDocuments({ role: "admin" });
+        if (adminCount <= 1)
+          return bad(res, "Cannot delete the last admin user", 400);
       }
+
+      await User.findByIdAndDelete(id);
+      return ok(res, { id, kind: "user" }, "User deleted");
     }
 
-    await User.findByIdAndDelete(id);
-    return ok(res, { id }, "User deleted");
+    // If explicitly deleting a DSE
+    if (kind === "dse") {
+      const d = await Dse.findById(id).select("_id");
+      if (!d) return bad(res, "DSE not found", 404);
+
+      await Dse.findByIdAndDelete(id);
+      return ok(res, { id, kind: "dse" }, "DSE deleted");
+    }
+
+    // Auto-detect: try User first, then DSE
+    const u = await User.findById(id).select("role");
+    if (u) {
+      if (u.role === "admin") {
+        const adminCount = await User.countDocuments({ role: "admin" });
+        if (adminCount <= 1)
+          return bad(res, "Cannot delete the last admin user", 400);
+      }
+      await User.findByIdAndDelete(id);
+      return ok(res, { id, kind: "user" }, "User deleted");
+    }
+
+    const d = await Dse.findById(id).select("_id");
+    if (d) {
+      await Dse.findByIdAndDelete(id);
+      return ok(res, { id, kind: "dse" }, "DSE deleted");
+    }
+
+    return bad(res, "Account not found in Users or DSEs", 404);
   } catch (err) {
     return bad(res, err?.message || "Failed to delete user", 500);
   }
 };
+
+// GET /api/users  (now returns Users + DSEs in one normalized list)
+export const getAllUsers = async (_req, res) => {
+  try {
+    const [users, dses] = await Promise.all([
+      User.find({})
+        .select(
+          "_id username name email role branch isActive createdAt updatedAt"
+        )
+        .sort("-createdAt")
+        .lean(),
+      Dse.find({})
+        .select("_id name phone role createdAt updatedAt")
+        .sort("-createdAt")
+        .lean(),
+    ]);
+
+    const normalizedUsers = users.map((u) => ({
+      _id: String(u._id),
+      name: u.name || u.username || "",
+      username: u.username || null,
+      email: u.email || null,
+      phone: null,
+      role: u.role || "user",
+      branch: u.branch || null,
+      isActive: typeof u.isActive === "boolean" ? u.isActive : null,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+      kind: "user",
+    }));
+
+    const normalizedDses = dses.map((d) => ({
+      _id: String(d._id),
+      name: d.name,
+      username: null,
+      email: null,
+      phone: d.phone,
+      role: d.role || "dse",
+      branch: null,
+      isActive: null,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      kind: "dse",
+    }));
+
+    const data = [...normalizedUsers, ...normalizedDses].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    return bad(res, err?.message || "Failed to fetch users", 500);
+  }
+};
+
 // --- Register DSE ---
 export const registerDse = async (req, res) => {
   try {
@@ -489,7 +558,11 @@ export const registerDse = async (req, res) => {
     const exists = await Dse.findOne({ phone });
     if (exists) return bad(res, "Phone already registered", 400);
 
-    const dse = new Dse({ name, phone });
+    // If `upload.single('photo')` ran, Multer+Cloudinary gives us req.file
+    const photoUrl = req.file?.path || "";       // Cloudinary URL
+    const photoPublicId = req.file?.filename || "";
+
+    const dse = new Dse({ name, phone, photoUrl, photoPublicId });
     await dse.setPassword(password);
     await dse.save();
 
@@ -502,7 +575,13 @@ export const registerDse = async (req, res) => {
     return ok(
       res,
       {
-        user: { id: dse._id, name: dse.name, phone: dse.phone, role: dse.role },
+        user: {
+          id: dse._id,
+          name: dse.name,
+          phone: dse.phone,
+          role: dse.role,
+          photoUrl: dse.photoUrl,
+        },
         token,
       },
       "DSE registered successfully"

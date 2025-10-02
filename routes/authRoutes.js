@@ -16,6 +16,7 @@ const {
   getDseList,
 } = require("../controllers/authController");
 
+const { upload } = require("../middleware/upload.js"); // ✅ fixed to use require
 const Dse = require("../models/Dse");
 
 router.post("/login", login);
@@ -31,19 +32,16 @@ router.post("/check-customer", checkCustomer); // { phone } -> { exists }
 router.post("/send-otp", sendOtp); // { phone }
 router.post("/otp-login", otpLogin); // { phone, otp, [name], [email] }
 
-router.post(
-  "/users",
-
-  createStaffUser
-);
+router.post("/users", createStaffUser);
 
 // If you want it protected, use: router.get("/", protect, getAllUsers);
 router.get("/getAllUsers", getAllUsers);
+
 // ✅ NEW: delete a user by id
 router.delete("/users/:id", deleteUser);
 
 // ✅ DSE Routes
-router.post("/register-dse", registerDse);
+router.post("/register", upload.single("photo"), registerDse);
 router.post("/login-dse", loginDse);
 router.get("/get-dse", getDseList);
 
