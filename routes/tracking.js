@@ -164,6 +164,7 @@ router.post("/locations", auth, async (req, res) => {
   }
 });
 
+
 /* ============================================================
    History for a user (raw points)
    GET /user/:id?from=ISO&to=ISO
