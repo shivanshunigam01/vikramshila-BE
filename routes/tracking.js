@@ -86,16 +86,18 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
 // ============================================================
 // adjust path if needed
 
+// routes/tracking.js
 router.post("/locations", auth, async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
       console.error("❌ Unauthorized - no user in request");
       return res.status(401).json({ message: "Unauthorized" });
     }
+
     const userId = req.user.id;
     const { points } = req.body || {};
 
-    console.log("📥 Raw body:", req.body);
+    console.log("📥 Raw body:", JSON.stringify(req.body, null, 2));
 
     if (!Array.isArray(points) || points.length === 0) {
       console.error("❌ No points in request");
@@ -139,30 +141,31 @@ router.post("/locations", auth, async (req, res) => {
       })
       .filter(Boolean);
 
+    console.log("📄 Prepared docs to insert:", JSON.stringify(docs, null, 2));
     console.log(`✅ After validation: ${docs.length} valid points`);
 
     if (docs.length === 0) {
-      console.error("❌ All points invalid");
+      console.error("❌ All points invalid, nothing to insert");
       return res.status(400).json({ message: "All points invalid" });
     }
 
     try {
-      console.log("🟢 Attempting to insert into Mongo:", docs[0]);
+      console.log("🟢 Attempting to insert into Mongo...");
       const saved = await LocationPoint.insertMany(docs, { ordered: false });
-      console.log(
-        `💾 Mongo saved ${saved.length} docs. Example:`,
-        saved[0]
-      );
+      console.log("✅ Insert result:", saved);
       res.json({ saved: saved.length, received: points.length });
     } catch (err) {
       console.error("❌ Mongo insert error:", err);
-      res.status(500).json({ message: "DB insert failed", error: err.message });
+      return res
+        .status(500)
+        .json({ message: "DB insert failed", error: err.message });
     }
   } catch (err) {
     console.error("❌ /locations route error:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
 
 
 /* ============================================================
