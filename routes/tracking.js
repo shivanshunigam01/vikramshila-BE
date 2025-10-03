@@ -88,7 +88,7 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
 
 // routes/tracking.js
 // Save locations to DB
-router.post("/locations", auth, async (req, res) => {
+router.post("/locations", async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ message: "Unauthorized" });
