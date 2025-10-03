@@ -80,44 +80,31 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
    Ingestion: save multiple locations
    Body: { points: [{ ts, lat, lon, acc?, speed?, heading?, battery?, provider? }, ...] }
 ============================================================ */
-// ✅ Protect with auth (either router.use(auth) above, or inline here)
 router.post("/locations", auth, async (req, res) => {
   try {
-    // auth middleware must set req.user = { id: ... }
     if (!req.user || !req.user.id) {
       return res.status(401).json({ message: "Unauthorized" });
     }
     const userId = req.user.id;
-
-    // detect client IP and UA robustly (works with proxies if app.set('trust proxy', true))
-    const xfwd = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-    const ip =
-      xfwd ||
-      req.ip ||
-      req.connection?.remoteAddress ||
-      req.socket?.remoteAddress ||
-      null;
-    const ua = req.headers["user-agent"] || null;
 
     const { points } = req.body || {};
     if (!Array.isArray(points) || points.length === 0) {
       return res.status(400).json({ message: "No points" });
     }
 
-    // helper: parse & validate a single point
+    const xfwd = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    const ip = xfwd || req.ip || req.connection?.remoteAddress || null;
+    const ua = req.headers["user-agent"] || null;
+
     const toDoc = (p) => {
-      // ts: allow ms epoch or ISO string
-      let ts = null;
-      if (typeof p.ts === "number") ts = new Date(p.ts);
-      else if (typeof p.ts === "string") ts = new Date(p.ts);
-      if (!ts || isNaN(ts.getTime())) return null;
+      let ts = new Date(p.ts);
+      if (isNaN(ts.getTime())) return null;
 
       const lat = Number(p.lat);
       const lon = Number(p.lon);
       if (!isFinite(lat) || !isFinite(lon)) return null;
-      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
 
-      const doc = {
+      return {
         user: userId,
         ts,
         lat,
@@ -130,21 +117,39 @@ router.post("/locations", auth, async (req, res) => {
         ip,
         ua,
       };
-
-      // strip NaN fields
-      for (const k of ["acc", "speed", "heading", "battery"]) {
-        if (doc[k] != null && !isFinite(doc[k])) delete doc[k];
-      }
-      return doc;
     };
 
-    const docs = points.map(toDoc).filter(Boolean); // drop invalid points silently
+    let docs = points.map(toDoc).filter(Boolean);
 
-    if (docs.length === 0) {
-      return res.status(400).json({ message: "All points invalid" });
+    // ✅ Skip points if stationary >10min within 30m
+    const lastPoint = await LocationPoint.findOne({ user: userId })
+      .sort({ ts: -1 })
+      .lean();
+
+    if (lastPoint && docs.length > 0) {
+      const newPoint = docs[docs.length - 1];
+      const distKm = haversineKm(
+        lastPoint.lat,
+        lastPoint.lon,
+        newPoint.lat,
+        newPoint.lon
+      );
+      const timeDiffMin = (newPoint.ts - new Date(lastPoint.ts)) / 60000;
+
+      if (distKm * 1000 <= 30 && timeDiffMin >= 10) {
+        console.log(
+          `⏸️ Skipped stationary point for user ${userId} (within 30m for ${timeDiffMin.toFixed(
+            1
+          )}min)`
+        );
+        docs = []; // don’t save
+      }
     }
 
-    await LocationPoint.insertMany(docs, { ordered: false });
+    if (docs.length > 0) {
+      await LocationPoint.insertMany(docs, { ordered: false });
+    }
+
     res.json({ saved: docs.length, received: points.length });
   } catch (err) {
     console.error("POST /locations error:", err);
