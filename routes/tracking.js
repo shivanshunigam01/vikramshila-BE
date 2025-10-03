@@ -62,10 +62,10 @@ function normDate(v, fallback) {
   const d = v ? new Date(v) : null;
   return isNaN(d?.getTime() ?? NaN) ? fallback : d;
 }
-router.post("/locations", async (req, res) => {
-  console.log("Received:", req.body.points?.length, req.body.points?.[0]);
-  res.json({ ok: true });
-});
+// router.post("/locations", async (req, res) => {
+//   console.log("Received:", req.body.points?.length, req.body.points?.[0]);
+//   res.json({ ok: true });
+// });
 
 function byTsAsc(a, b) {
   return new Date(a.ts).getTime() - new Date(b.ts).getTime();
@@ -87,86 +87,43 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
 // adjust path if needed
 
 // routes/tracking.js
+// Save locations to DB
 router.post("/locations", auth, async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
-      console.error("❌ Unauthorized - no user in request");
       return res.status(401).json({ message: "Unauthorized" });
     }
 
     const userId = req.user.id;
     const { points } = req.body || {};
 
-    console.log("📥 Raw body:", JSON.stringify(req.body, null, 2));
-
     if (!Array.isArray(points) || points.length === 0) {
-      console.error("❌ No points in request");
       return res.status(400).json({ message: "No points" });
     }
 
-    console.log(`📡 Incoming batch from user=${userId}, count=${points.length}`);
-    console.log("↪ First raw point:", points[0]);
+    // Prepare docs
+    const docs = points.map((p) => ({
+      user: userId,
+      ts: new Date(Number(p.ts)),
+      lat: Number(p.lat),
+      lon: Number(p.lon),
+      acc: p.acc != null ? Number(p.acc) : undefined,
+      speed: p.speed != null ? Number(p.speed) : undefined,
+      heading: p.heading != null ? Number(p.heading) : undefined,
+      battery: p.battery != null ? Number(p.battery) : undefined,
+      provider: p.provider ?? null,
+    }));
 
-    const docs = points
-      .map((p, i) => {
-        try {
-          const ts = new Date(Number(p.ts));
-          if (isNaN(ts.getTime())) {
-            console.warn(`❌ Invalid ts at index ${i}:`, p.ts);
-            return null;
-          }
+    // Insert into Mongo
+    const saved = await LocationPoint.insertMany(docs, { ordered: false });
 
-          const lat = Number(p.lat);
-          const lon = Number(p.lon);
-          if (!isFinite(lat) || !isFinite(lon)) {
-            console.warn(`❌ Invalid lat/lon at index ${i}:`, p.lat, p.lon);
-            return null;
-          }
-
-          return {
-            user: userId,
-            ts,
-            lat,
-            lon,
-            acc: p.acc != null ? Number(p.acc) : undefined,
-            speed: p.speed != null ? Number(p.speed) : undefined,
-            heading: p.heading != null ? Number(p.heading) : undefined,
-            battery: p.battery != null ? Number(p.battery) : undefined,
-            provider: p.provider ?? null,
-          };
-        } catch (err) {
-          console.error("❌ Mapping error at index", i, err);
-          return null;
-        }
-      })
-      .filter(Boolean);
-
-    console.log("📄 Prepared docs to insert:", JSON.stringify(docs, null, 2));
-    console.log(`✅ After validation: ${docs.length} valid points`);
-
-    if (docs.length === 0) {
-      console.error("❌ All points invalid, nothing to insert");
-      return res.status(400).json({ message: "All points invalid" });
-    }
-
-    try {
-      console.log("🟢 Attempting to insert into Mongo...");
-      const saved = await LocationPoint.insertMany(docs, { ordered: false });
-      console.log("✅ Insert result:", saved);
-      res.json({ saved: saved.length, received: points.length });
-    } catch (err) {
-      console.error("❌ Mongo insert error:", err);
-      return res
-        .status(500)
-        .json({ message: "DB insert failed", error: err.message });
-    }
+    console.log(`💾 Saved ${saved.length} points for user=${userId}`);
+    res.json({ saved: saved.length });
   } catch (err) {
-    console.error("❌ /locations route error:", err);
+    console.error("❌ Insert error:", err);
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
-
-
 
 /* ============================================================
    History for a user (raw points)
