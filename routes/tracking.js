@@ -84,43 +84,53 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
 // Ingestion: save multiple locations
 // Body: { points: [{ ts, lat, lon, acc?, speed?, heading?, battery?, provider? }, ...] }
 // ============================================================
+// adjust path if needed
+
 router.post("/locations", auth, async (req, res) => {
   try {
-    // 🔹 Step 1: Check Auth
+    console.log("🚀 /locations hit");
+    console.log("🔑 req.user (from auth):", req.user);
+
     if (!req.user || !req.user.id) {
-      console.warn("⚠️ Unauthorized request. req.user=", req.user);
+      console.warn("❌ Unauthorized: no req.user.id");
       return res.status(401).json({ message: "Unauthorized" });
     }
-    const userId = req.user.id;
-    console.log(`👤 Authenticated user=${userId}`);
 
-    // 🔹 Step 2: Raw body check
-    console.log("📦 Raw req.body:", JSON.stringify(req.body, null, 2));
+    // Cast userId to ObjectId (important for schema)
+    let userId;
+    try {
+      userId = new mongoose.Types.ObjectId(req.user.id);
+    } catch (e) {
+      console.error("❌ Invalid userId, cannot convert:", req.user.id);
+      return res.status(400).json({ message: "Invalid userId" });
+    }
+
+    console.log("✅ userId (ObjectId):", userId);
+
     const { points } = req.body || {};
+    console.log("📦 Incoming body:", JSON.stringify(req.body, null, 2));
+
     if (!Array.isArray(points) || points.length === 0) {
-      console.warn("⚠️ No points received from client");
+      console.warn("⚠️ No points array received");
       return res.status(400).json({ message: "No points" });
     }
 
-    console.log(
-      `📡 Incoming batch from user=${userId}, count=${points.length}`
-    );
+    console.log(`📡 Incoming batch: count=${points.length}`);
     console.log("↪ First raw point:", points[0]);
 
-    // 🔹 Step 3: Map & validate points
     const docs = points
       .map((p, idx) => {
         try {
           const ts = new Date(Number(p.ts));
           if (isNaN(ts.getTime())) {
-            console.warn(`❌ Invalid ts at index=${idx}:`, p.ts);
+            console.warn(`❌ Point[${idx}] invalid ts:`, p.ts);
             return null;
           }
 
           const lat = Number(p.lat);
           const lon = Number(p.lon);
           if (!isFinite(lat) || !isFinite(lon)) {
-            console.warn(`❌ Invalid lat/lon at index=${idx}:`, p.lat, p.lon);
+            console.warn(`❌ Point[${idx}] invalid lat/lon:`, p.lat, p.lon);
             return null;
           }
 
@@ -136,37 +146,42 @@ router.post("/locations", auth, async (req, res) => {
             provider: p.provider ?? null,
           };
         } catch (err) {
-          console.error(`❌ Mapping error at index=${idx}:`, err.message);
+          console.error(`❌ Mapping error at point[${idx}]:`, err);
           return null;
         }
       })
       .filter(Boolean);
 
-    console.log(`✅ After validation: ${docs.length} valid points`);
-    if (docs.length) console.log("🔍 First valid doc:", docs[0]);
+    console.log(
+      "✅ After validation, docs ready:",
+      JSON.stringify(docs, null, 2)
+    );
 
     if (docs.length === 0) {
+      console.warn("⚠️ All points invalid, nothing to save");
       return res.status(400).json({ message: "All points invalid" });
     }
 
-    // 🔹 Step 4: Save into Mongo
     try {
-      console.log(
-        "📥 Inserting docs into collection:",
-        LocationPoint.collection.name
-      );
       const saved = await LocationPoint.insertMany(docs, { ordered: false });
-      console.log(
-        `💾 Mongo saved ${saved.length} points for user=${userId}. First lat/lon=${saved[0].lat},${saved[0].lon}`
-      );
-      res.json({ saved: saved.length, received: points.length });
+      console.log("💾 Mongo insert success:", saved.length);
+      if (saved.length > 0) {
+        console.log(
+          `🌍 First saved doc lat/lon=${saved[0].lat},${saved[0].lon} @ ${saved[0].ts}`
+        );
+      }
+      return res.json({ saved: saved.length, received: points.length });
     } catch (err) {
       console.error("❌ Mongo insert error:", err);
-      res.status(500).json({ message: "DB insert failed", error: err.message });
+      return res
+        .status(500)
+        .json({ message: "DB insert failed", error: err.message });
     }
   } catch (err) {
     console.error("❌ /locations route error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: err.message });
   }
 });
 
