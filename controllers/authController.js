@@ -7,6 +7,8 @@ import dotenv from "dotenv";
 import Customer from "../models/Customer.js";
 import bcrypt from "bcryptjs";
 import Dse from "../models/Dse.js";
+import ClientVisit from "../models/ClientVisit.js";
+
 
 dotenv.config();
 
@@ -550,14 +552,19 @@ export const getAllUsers = async (_req, res) => {
 // --- Register DSE ---
 export const registerDse = async (req, res) => {
   try {
+    console.log("req.body:", req.body);
+    console.log("req.file:", req.file);
     const { name, phone, password } = req.body;
 
     if (!name || !phone || !password) {
-      return res.status(400).json({ message: "name, phone and password are required" });
+      return res
+        .status(400)
+        .json({ message: "name, phone and password are required" });
     }
 
     const exists = await Dse.findOne({ phone });
-    if (exists) return res.status(400).json({ message: "Phone already registered" });
+    if (exists)
+      return res.status(400).json({ message: "Phone already registered" });
 
     const photoUrl = req.file?.path || "";
     const photoPublicId = req.file?.filename || "";
@@ -574,7 +581,7 @@ export const registerDse = async (req, res) => {
         role: dse.role,
         photoUrl: dse.photoUrl,
       },
-      token: "dummy-jwt-here"
+      token: "dummy-jwt-here",
     });
   } catch (err) {
     console.error("registerDse error:", err);
@@ -607,14 +614,19 @@ export const loginDse = async (req, res) => {
     console.log("Name:", dse.name);
     console.log("Phone:", dse.phone);
     console.log("Role:", dse.role);
-    console.log("Role:", dse.photoUrl);
+    console.log("photo:", dse.photoUrl);
     console.log("JWT Token:", token);
-    
 
     return ok(
       res,
       {
-        user: { id: dse._id, name: dse.name, phone: dse.phone, role: dse.role, photoUrl: dse.photoUrl },
+        user: {
+          id: dse._id,
+          name: dse.name,
+          phone: dse.phone,
+          role: dse.role,
+          photoUrl: dse.photoUrl,
+        },
         token,
       },
       "DSE login successful"
@@ -624,7 +636,6 @@ export const loginDse = async (req, res) => {
     return bad(res, "Server error", 500);
   }
 };
-
 
 export const getDseList = async (req, res) => {
   try {
@@ -663,5 +674,57 @@ export const getDseList = async (req, res) => {
   } catch (err) {
     console.error("GET /api/dse error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// --- Create DSE Client Visit ---
+// POST /api/auth/dse/visit   (multipart: photo; body: clientName, lat, lon, acc, dseId, dseName, dsePhone)
+export const createDseVisit = async (req, res) => {
+  try {
+    const { clientName, lat, lon, acc, dseId, dseName, dsePhone } = req.body || {};
+    if (!clientName || !lat || !lon) {
+      return res.status(400).json({ message: "clientName, lat and lon are required" });
+    }
+    if (!req.file?.path) {
+      return res.status(400).json({ message: "photo is required" });
+    }
+
+    // Optional: if dseId present and valid, we can keep a real ref
+    let dseRef = null;
+    if (dseId) {
+      try {
+        const dse = await Dse.findById(dseId).select("_id");
+        if (dse) dseRef = dse._id;
+      } catch { /* ignore invalid ObjectId */ }
+    }
+
+    const visit = await ClientVisit.create({
+      dse: dseRef,
+      dseName: dseName || "",
+      dsePhone: dsePhone || "",
+      clientName: String(clientName).trim(),
+      location: {
+        lat: Number(lat),
+        lon: Number(lon),
+        acc: acc ? Number(acc) : null,
+      },
+      photoUrl: req.file.path,
+      photoPublicId: req.file.filename || "",
+    });
+
+    return res.json({
+      success: true,
+      message: "Visit recorded",
+      data: {
+        id: visit._id,
+        clientName: visit.clientName,
+        photoUrl: visit.photoUrl,
+        location: visit.location,
+        createdAt: visit.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("createDseVisit error:", err);
+    return res.status(500).json({ message: err.message || "Server error" });
   }
 };

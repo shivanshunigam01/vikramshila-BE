@@ -330,6 +330,18 @@ const uploadDsePhoto = multer({ storage: dsePhotoStorage }).single("photo");
 
 const upload = multer({ storage });
 
+// === Client Visit Photo (Cloudinary, folder: client-visits) ===
+const clientVisitStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "client-visits",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    transformation: [{ quality: "auto" }, { fetch_format: "auto" }],
+    resource_type: "image",
+  },
+});
+const uploadClientVisitPhoto = multer({ storage: clientVisitStorage }).single("photo");
+
 // ================= EXPORTS =================
 module.exports = {
   uploadSchemeImages,
@@ -341,5 +353,6 @@ module.exports = {
   upload,
   uploadProductMedia: handleMixedUpload,
   uploadLeadKyc,
-  uploadDsePhoto
+  uploadDsePhoto,
+  uploadClientVisitPhoto,
 };

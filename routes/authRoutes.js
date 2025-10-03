@@ -16,12 +16,16 @@ const {
   loginDse,
   registerDse,
   getDseList,
+  createDseVisit,
 } = require("../controllers/authController");
 
 // ❌ Remove this — it can break if your model is ESM and it's unused anyway
 // const Dse = require("../models/Dse");
 
-const { uploadDsePhoto } = require("../middleware/upload.js");
+const {
+  uploadDsePhoto,
+  uploadClientVisitPhoto,
+} = require("../middleware/upload.js");
 
 // Admin / staff
 router.post("/login", login);
@@ -41,5 +45,7 @@ router.delete("/users/:id", deleteUser);
 router.post("/register-dse", uploadDsePhoto, registerDse);
 router.post("/login-dse", loginDse);
 router.get("/get-dse", getDseList);
+// Client visit (with photo + gps)
+router.post("/dse/visit", uploadClientVisitPhoto, createDseVisit);
 
 module.exports = router;
