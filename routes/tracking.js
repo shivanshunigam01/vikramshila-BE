@@ -80,6 +80,10 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
    Ingestion: save multiple locations
    Body: { points: [{ ts, lat, lon, acc?, speed?, heading?, battery?, provider? }, ...] }
 ============================================================ */
+// ============================================================
+// Ingestion: save multiple locations
+// Body: { points: [{ ts, lat, lon, acc?, speed?, heading?, battery?, provider? }, ...] }
+// ============================================================
 router.post("/locations", auth, async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
@@ -87,24 +91,35 @@ router.post("/locations", auth, async (req, res) => {
     }
     const userId = req.user.id;
 
+    const xfwd = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    const ip =
+      xfwd ||
+      req.ip ||
+      req.connection?.remoteAddress ||
+      req.socket?.remoteAddress ||
+      null;
+    const ua = req.headers["user-agent"] || null;
+
     const { points } = req.body || {};
     if (!Array.isArray(points) || points.length === 0) {
       return res.status(400).json({ message: "No points" });
     }
 
-    const xfwd = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-    const ip = xfwd || req.ip || req.connection?.remoteAddress || null;
-    const ua = req.headers["user-agent"] || null;
+    console.log(`📡 Received ${points.length} raw points from user=${userId}`);
 
+    // helper: parse & validate a single point
     const toDoc = (p) => {
-      let ts = new Date(p.ts);
-      if (isNaN(ts.getTime())) return null;
+      let ts = null;
+      if (typeof p.ts === "number") ts = new Date(p.ts);
+      else if (typeof p.ts === "string") ts = new Date(p.ts);
+      if (!ts || isNaN(ts.getTime())) return null;
 
       const lat = Number(p.lat);
       const lon = Number(p.lon);
       if (!isFinite(lat) || !isFinite(lon)) return null;
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
 
-      return {
+      const doc = {
         user: userId,
         ts,
         lat,
@@ -117,42 +132,30 @@ router.post("/locations", auth, async (req, res) => {
         ip,
         ua,
       };
+
+      for (const k of ["acc", "speed", "heading", "battery"]) {
+        if (doc[k] != null && !isFinite(doc[k])) delete doc[k];
+      }
+      return doc;
     };
 
-    let docs = points.map(toDoc).filter(Boolean);
+    const docs = points.map(toDoc).filter(Boolean);
 
-    // ✅ Skip points if stationary >10min within 30m
-    const lastPoint = await LocationPoint.findOne({ user: userId })
-      .sort({ ts: -1 })
-      .lean();
+    console.log(`✅ Valid points after filtering: ${docs.length}`);
 
-    if (lastPoint && docs.length > 0) {
-      const newPoint = docs[docs.length - 1];
-      const distKm = haversineKm(
-        lastPoint.lat,
-        lastPoint.lon,
-        newPoint.lat,
-        newPoint.lon
-      );
-      const timeDiffMin = (newPoint.ts - new Date(lastPoint.ts)) / 60000;
-
-      if (distKm * 1000 <= 30 && timeDiffMin >= 10) {
-        console.log(
-          `⏸️ Skipped stationary point for user ${userId} (within 30m for ${timeDiffMin.toFixed(
-            1
-          )}min)`
-        );
-        docs = []; // don’t save
-      }
+    if (docs.length === 0) {
+      return res.status(400).json({ message: "All points invalid" });
     }
 
-    if (docs.length > 0) {
-      await LocationPoint.insertMany(docs, { ordered: false });
-    }
+    const saved = await LocationPoint.insertMany(docs, { ordered: false });
 
-    res.json({ saved: docs.length, received: points.length });
+    console.log(
+      `💾 Saved ${saved.length} points to DB (user=${userId}) [collection=locationpoints]`
+    );
+
+    res.json({ saved: saved.length, received: points.length });
   } catch (err) {
-    console.error("POST /locations error:", err);
+    console.error("❌ POST /locations error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
