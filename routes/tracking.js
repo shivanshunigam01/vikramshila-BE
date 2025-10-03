@@ -86,32 +86,41 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
 // ============================================================
 router.post("/locations", auth, async (req, res) => {
   try {
+    // 🔹 Step 1: Check Auth
     if (!req.user || !req.user.id) {
+      console.warn("⚠️ Unauthorized request. req.user=", req.user);
       return res.status(401).json({ message: "Unauthorized" });
     }
     const userId = req.user.id;
-    const { points } = req.body || {};
+    console.log(`👤 Authenticated user=${userId}`);
 
+    // 🔹 Step 2: Raw body check
+    console.log("📦 Raw req.body:", JSON.stringify(req.body, null, 2));
+    const { points } = req.body || {};
     if (!Array.isArray(points) || points.length === 0) {
+      console.warn("⚠️ No points received from client");
       return res.status(400).json({ message: "No points" });
     }
 
-    console.log(`📡 Incoming batch from user=${userId}, count=${points.length}`);
+    console.log(
+      `📡 Incoming batch from user=${userId}, count=${points.length}`
+    );
     console.log("↪ First raw point:", points[0]);
 
+    // 🔹 Step 3: Map & validate points
     const docs = points
-      .map((p) => {
+      .map((p, idx) => {
         try {
           const ts = new Date(Number(p.ts));
           if (isNaN(ts.getTime())) {
-            console.warn("❌ Invalid ts:", p.ts);
+            console.warn(`❌ Invalid ts at index=${idx}:`, p.ts);
             return null;
           }
 
           const lat = Number(p.lat);
           const lon = Number(p.lon);
           if (!isFinite(lat) || !isFinite(lon)) {
-            console.warn("❌ Invalid lat/lon:", p.lat, p.lon);
+            console.warn(`❌ Invalid lat/lon at index=${idx}:`, p.lat, p.lon);
             return null;
           }
 
@@ -127,19 +136,25 @@ router.post("/locations", auth, async (req, res) => {
             provider: p.provider ?? null,
           };
         } catch (err) {
-          console.error("❌ Mapping error:", err);
+          console.error(`❌ Mapping error at index=${idx}:`, err.message);
           return null;
         }
       })
       .filter(Boolean);
 
     console.log(`✅ After validation: ${docs.length} valid points`);
+    if (docs.length) console.log("🔍 First valid doc:", docs[0]);
 
     if (docs.length === 0) {
       return res.status(400).json({ message: "All points invalid" });
     }
 
+    // 🔹 Step 4: Save into Mongo
     try {
+      console.log(
+        "📥 Inserting docs into collection:",
+        LocationPoint.collection.name
+      );
       const saved = await LocationPoint.insertMany(docs, { ordered: false });
       console.log(
         `💾 Mongo saved ${saved.length} points for user=${userId}. First lat/lon=${saved[0].lat},${saved[0].lon}`
@@ -154,8 +169,6 @@ router.post("/locations", auth, async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
-
-
 
 /* ============================================================
    History for a user (raw points)
