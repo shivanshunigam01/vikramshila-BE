@@ -88,20 +88,25 @@ router.get("/ping", (_req, res) => res.json({ ok: true }));
 
 // routes/tracking.js
 // Save locations to DB
-router.post("/locations", async (req, res) => {
+router.post("/locations", auth, async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
+      console.error("❌ No req.user in /locations");
       return res.status(401).json({ message: "Unauthorized" });
     }
 
     const userId = req.user.id;
     const { points } = req.body || {};
 
+    console.log("📥 Received request from user:", req.user);
+    console.log("📥 Raw points:", points);
+
     if (!Array.isArray(points) || points.length === 0) {
+      console.error("❌ No points array");
       return res.status(400).json({ message: "No points" });
     }
 
-    // Prepare docs
+    // prepare docs
     const docs = points.map((p) => ({
       user: userId,
       ts: new Date(Number(p.ts)),
@@ -114,10 +119,10 @@ router.post("/locations", async (req, res) => {
       provider: p.provider ?? null,
     }));
 
-    // Insert into Mongo
+    // save
     const saved = await LocationPoint.insertMany(docs, { ordered: false });
+    console.log(`💾 Mongo saved ${saved.length} points for user=${userId}`);
 
-    console.log(`💾 Saved ${saved.length} points for user=${userId}`);
     res.json({ saved: saved.length });
   } catch (err) {
     console.error("❌ Insert error:", err);
