@@ -82,6 +82,8 @@ import creditReportRoutes from "./routes/creditReport.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import trackingRoutes from "./routes/tracking.js";
 import newsletterRoutes from "./routes/newsletter.js";
+import videoRoutes from "./routes/videoRoutes.js";
+
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/credit", creditReportRoutes);
 app.use("/api/auth", authRoutes);
@@ -101,6 +103,7 @@ app.use("/api/grievances", grievanceRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tracking", trackingRoutes);
+app.use("/api/videos", videoRoutes);
 
 // Health check
 app.get("/", (req, res) =>
