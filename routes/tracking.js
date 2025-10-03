@@ -97,34 +97,39 @@ router.post("/locations", auth, async (req, res) => {
     }
 
     console.log(`📡 Incoming batch from user=${userId}, count=${points.length}`);
-    console.log("↪ First point:", points[0]);
+    console.log("↪ First raw point:", points[0]);
 
-    // map/validate
     const docs = points
       .map((p) => {
-        const ts =
-          typeof p.ts === "number"
-            ? new Date(p.ts)
-            : typeof p.ts === "string"
-            ? new Date(p.ts)
-            : null;
-        if (!ts || isNaN(ts.getTime())) return null;
+        try {
+          const ts = new Date(Number(p.ts));
+          if (isNaN(ts.getTime())) {
+            console.warn("❌ Invalid ts:", p.ts);
+            return null;
+          }
 
-        const lat = Number(p.lat);
-        const lon = Number(p.lon);
-        if (!isFinite(lat) || !isFinite(lon)) return null;
+          const lat = Number(p.lat);
+          const lon = Number(p.lon);
+          if (!isFinite(lat) || !isFinite(lon)) {
+            console.warn("❌ Invalid lat/lon:", p.lat, p.lon);
+            return null;
+          }
 
-        return {
-          user: userId,
-          ts,
-          lat,
-          lon,
-          acc: p.acc != null ? Number(p.acc) : undefined,
-          speed: p.speed != null ? Number(p.speed) : undefined,
-          heading: p.heading != null ? Number(p.heading) : undefined,
-          battery: p.battery != null ? Number(p.battery) : undefined,
-          provider: p.provider ?? null,
-        };
+          return {
+            user: userId,
+            ts,
+            lat,
+            lon,
+            acc: p.acc != null ? Number(p.acc) : undefined,
+            speed: p.speed != null ? Number(p.speed) : undefined,
+            heading: p.heading != null ? Number(p.heading) : undefined,
+            battery: p.battery != null ? Number(p.battery) : undefined,
+            provider: p.provider ?? null,
+          };
+        } catch (err) {
+          console.error("❌ Mapping error:", err);
+          return null;
+        }
       })
       .filter(Boolean);
 
@@ -134,19 +139,22 @@ router.post("/locations", auth, async (req, res) => {
       return res.status(400).json({ message: "All points invalid" });
     }
 
-    const saved = await LocationPoint.insertMany(docs, { ordered: false });
-
-    // 🔍 DEBUG: confirm persistence
-    console.log(
-      `💾 Mongo saved ${saved.length} points for user=${userId}. First lat/lon=${saved[0].lat},${saved[0].lon}`
-    );
-
-    res.json({ saved: saved.length, received: points.length });
+    try {
+      const saved = await LocationPoint.insertMany(docs, { ordered: false });
+      console.log(
+        `💾 Mongo saved ${saved.length} points for user=${userId}. First lat/lon=${saved[0].lat},${saved[0].lon}`
+      );
+      res.json({ saved: saved.length, received: points.length });
+    } catch (err) {
+      console.error("❌ Mongo insert error:", err);
+      res.status(500).json({ message: "DB insert failed", error: err.message });
+    }
   } catch (err) {
-    console.error("❌ /locations error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ /locations route error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
 
 
 /* ============================================================
