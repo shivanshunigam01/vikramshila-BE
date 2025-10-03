@@ -90,58 +90,45 @@ router.post("/locations", auth, async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
     const userId = req.user.id;
-
-    const xfwd = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-    const ip =
-      xfwd ||
-      req.ip ||
-      req.connection?.remoteAddress ||
-      req.socket?.remoteAddress ||
-      null;
-    const ua = req.headers["user-agent"] || null;
-
     const { points } = req.body || {};
+
     if (!Array.isArray(points) || points.length === 0) {
       return res.status(400).json({ message: "No points" });
     }
 
-    console.log(`📡 Received ${points.length} raw points from user=${userId}`);
+    console.log(`📡 Incoming batch from user=${userId}, count=${points.length}`);
+    console.log("↪ First point:", points[0]);
 
-    // helper: parse & validate a single point
-    const toDoc = (p) => {
-      let ts = null;
-      if (typeof p.ts === "number") ts = new Date(p.ts);
-      else if (typeof p.ts === "string") ts = new Date(p.ts);
-      if (!ts || isNaN(ts.getTime())) return null;
+    // map/validate
+    const docs = points
+      .map((p) => {
+        const ts =
+          typeof p.ts === "number"
+            ? new Date(p.ts)
+            : typeof p.ts === "string"
+            ? new Date(p.ts)
+            : null;
+        if (!ts || isNaN(ts.getTime())) return null;
 
-      const lat = Number(p.lat);
-      const lon = Number(p.lon);
-      if (!isFinite(lat) || !isFinite(lon)) return null;
-      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+        const lat = Number(p.lat);
+        const lon = Number(p.lon);
+        if (!isFinite(lat) || !isFinite(lon)) return null;
 
-      const doc = {
-        user: userId,
-        ts,
-        lat,
-        lon,
-        acc: p.acc != null ? Number(p.acc) : undefined,
-        speed: p.speed != null ? Number(p.speed) : undefined,
-        heading: p.heading != null ? Number(p.heading) : undefined,
-        battery: p.battery != null ? Number(p.battery) : undefined,
-        provider: p.provider ?? null,
-        ip,
-        ua,
-      };
+        return {
+          user: userId,
+          ts,
+          lat,
+          lon,
+          acc: p.acc != null ? Number(p.acc) : undefined,
+          speed: p.speed != null ? Number(p.speed) : undefined,
+          heading: p.heading != null ? Number(p.heading) : undefined,
+          battery: p.battery != null ? Number(p.battery) : undefined,
+          provider: p.provider ?? null,
+        };
+      })
+      .filter(Boolean);
 
-      for (const k of ["acc", "speed", "heading", "battery"]) {
-        if (doc[k] != null && !isFinite(doc[k])) delete doc[k];
-      }
-      return doc;
-    };
-
-    const docs = points.map(toDoc).filter(Boolean);
-
-    console.log(`✅ Valid points after filtering: ${docs.length}`);
+    console.log(`✅ After validation: ${docs.length} valid points`);
 
     if (docs.length === 0) {
       return res.status(400).json({ message: "All points invalid" });
@@ -149,16 +136,18 @@ router.post("/locations", auth, async (req, res) => {
 
     const saved = await LocationPoint.insertMany(docs, { ordered: false });
 
+    // 🔍 DEBUG: confirm persistence
     console.log(
-      `💾 Saved ${saved.length} points to DB (user=${userId}) [collection=locationpoints]`
+      `💾 Mongo saved ${saved.length} points for user=${userId}. First lat/lon=${saved[0].lat},${saved[0].lon}`
     );
 
     res.json({ saved: saved.length, received: points.length });
   } catch (err) {
-    console.error("❌ POST /locations error:", err);
+    console.error("❌ /locations error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 /* ============================================================
    History for a user (raw points)
