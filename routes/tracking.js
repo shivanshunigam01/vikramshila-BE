@@ -11,6 +11,31 @@ const router = express.Router();
    Helpers
 ============================================================ */
 
+import fetch from "node-fetch";
+
+async function reverseGeocode(lat, lon) {
+  try {
+    // ✅ Free service: OpenStreetMap Nominatim (no API key needed, but rate-limited)
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+    const res = await fetch(url, { headers: { "User-Agent": "dse-tracker" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return {
+      display: data.display_name || null,
+      city:
+        data.address?.city ||
+        data.address?.town ||
+        data.address?.village ||
+        null,
+      state: data.address?.state || null,
+      country: data.address?.country || null,
+    };
+  } catch (e) {
+    console.error("Reverse geocode error:", e.message);
+    return null;
+  }
+}
+
 const R_EARTH_KM = 6371; // km
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -74,7 +99,9 @@ function byTsAsc(a, b) {
 /* ============================================================
    Basic health
 ============================================================ */
-router.get("/ping", (_req, res) => res.json({ ok: true }));
+router.get("/ping", (req, res) => {
+  res.json({ ok: true, ts: Date.now() });
+});
 
 /* ============================================================
    Ingestion: save multiple locations
@@ -701,9 +728,7 @@ router.get("/track/day/:id", async (req, res) => {
     let pts = await LocationPoint.find({
       user: id,
       ts: { $gte: from, $lte: to },
-    })
-      .sort({ ts: 1 })
-      .lean();
+    }).sort({ ts: 1 }).lean();
 
     pts = filterByAccuracy(pts, maxAcc);
     pts = sampleByMinSeconds(pts, sampleSec);
@@ -711,18 +736,26 @@ router.get("/track/day/:id", async (req, res) => {
     const coords = toCoords(pts);
     const stats = routeStats(pts);
 
+    // ✅ Reverse geocode the first & last points (to avoid huge API calls)
+    let startAddress = null, endAddress = null;
+    if (pts.length > 0) startAddress = await reverseGeocode(pts[0].lat, pts[0].lon);
+    if (pts.length > 1) endAddress = await reverseGeocode(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
+
     res.json({
       userId: id,
       date,
       points: pts,
       coords,
       stats,
+      startAddress,
+      endAddress,
     });
   } catch (e) {
     console.error("GET /track/day/:id error:", e);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 /* ====================== RANGE TRACK (grouped by day) ======================
 GET /api/tracking/track/range/:id?from=ISO&to=ISO&maxAcc=500&sampleSec=60

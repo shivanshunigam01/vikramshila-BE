@@ -2,6 +2,7 @@ const Grievance = require("../models/Grievance");
 const RESP = require("../utils/response");
 const sendMail = require("../utils/sendMail");
 
+/* ---------------- CREATE ---------------- */
 exports.create = async (req, res) => {
   try {
     const grievanceData = {
@@ -16,6 +17,9 @@ exports.create = async (req, res) => {
       state: req.body.state || "",
       pincode: req.body.pincode || "",
       status: "pending",
+      grievanceUpdates: [
+        { status: "pending", message: "Grievance submitted", at: new Date() },
+      ],
     };
 
     const grievance = await Grievance.create(grievanceData);
@@ -45,65 +49,59 @@ exports.create = async (req, res) => {
   }
 };
 
-exports.list = async (req, res) => {
+/* ---------------- LIST ---------------- */
+exports.list = async (_req, res) => {
   const items = await Grievance.find({}).sort({ createdAt: -1 });
   return RESP.ok(res, items);
 };
 
-exports.markInProgress = async (req, res) => {
-  const item = await Grievance.findByIdAndUpdate(
-    req.params.id,
-    { status: "in-progress" },
-    { new: true }
-  );
-  if (!item) return RESP.bad(res, "Not found", 404);
+/* ---------------- UPDATE STATUS ---------------- */
+exports.updateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, message } = req.body;
 
-  // Notify user
-  if (item.email && item.email !== "N/A") {
-    try {
-      await sendMail({
-        to: item.email,
-        subject: `Your grievance is under execution`,
-        html: `
-          <p>Dear ${item.fullName},</p>
-          <p>Your grievance titled <b>${item.subject}</b> is now under execution. Our team is working on it and will update you once it is resolved.</p>
-        `,
-      });
-    } catch (e) {
-      console.error("Failed to send execution email:", e.message);
+    const item = await Grievance.findById(id);
+    if (!item) return RESP.bad(res, "Not found", 404);
+
+    item.status = status || item.status;
+    item.grievanceUpdates.push({
+      status: status || item.status,
+      message: message || "",
+      byUser: req.user?._id,
+      byName: req.user?.name,
+    });
+    await item.save();
+
+    // Send user email if resolved/in-progress
+    if (item.email && item.email !== "N/A" && status) {
+      try {
+        await sendMail({
+          to: item.email,
+          subject:
+            status === "resolved"
+              ? `Your grievance has been resolved`
+              : `Your grievance is under execution`,
+          html: `
+            <p>Dear ${item.fullName},</p>
+            <p>Your grievance titled <b>${
+              item.subject
+            }</b> is now marked as <b>${status}</b>.</p>
+            <p>${message || ""}</p>
+          `,
+        });
+      } catch (e) {
+        console.error("Failed to send status update email:", e.message);
+      }
     }
-  }
 
-  return RESP.ok(res, item, "Marked as in-progress");
+    return RESP.ok(res, item, "Status updated");
+  } catch (e) {
+    return RESP.bad(res, e.message, 500);
+  }
 };
 
-exports.markResolved = async (req, res) => {
-  const item = await Grievance.findByIdAndUpdate(
-    req.params.id,
-    { status: "resolved" },
-    { new: true }
-  );
-  if (!item) return RESP.bad(res, "Not found", 404);
-
-  // Notify user
-  if (item.email && item.email !== "N/A") {
-    try {
-      await sendMail({
-        to: item.email,
-        subject: `Your grievance has been resolved`,
-        html: `
-          <p>Dear ${item.fullName},</p>
-          <p>Your grievance titled <b>${item.subject}</b> has been successfully resolved. Thank you for your patience.</p>
-        `,
-      });
-    } catch (e) {
-      console.error("Failed to send resolution email:", e.message);
-    }
-  }
-
-  return RESP.ok(res, item, "Marked resolved");
-};
-
+/* ---------------- DELETE ---------------- */
 exports.remove = async (req, res) => {
   const item = await Grievance.findByIdAndDelete(req.params.id);
   if (!item) return RESP.bad(res, "Not found", 404);
