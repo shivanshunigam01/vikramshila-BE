@@ -319,8 +319,8 @@ router.get("/latest-all-with-dse", async (req, res) => {
           updatedAt: 1,
           dseName: "$dse.name",
           dsePhone: "$dse.phone",
-          dsePhotoUrl: "$dse.photoUrl", // ✅ added
-          dsePhotoPublicId: "$dse.photoPublicId", // ✅ optional
+          dsePhotoUrl: "$dse.photoUrl",
+          dsePhotoPublicId: "$dse.photoPublicId",
         },
       },
     ];
@@ -329,13 +329,16 @@ router.get("/latest-all-with-dse", async (req, res) => {
 
     const enriched = rows.map((r) => {
       const diffMin = (Date.now() - new Date(r.ts).getTime()) / 60000;
-      const isOnline = diffMin <= activeWithinMinutes;
-      const lastSeenAgo =
-        diffMin < 1
-          ? "Just now"
-          : diffMin < 60
-          ? `${Math.floor(diffMin)} min ago`
-          : `${Math.floor(diffMin / 60)} hr ago`;
+      const isOfflineManual = r.provider === "manual_offline";
+      const isOnline = !isOfflineManual && diffMin <= activeWithinMinutes;
+
+      const lastSeenAgo = isOfflineManual
+        ? "Stopped manually"
+        : diffMin < 1
+        ? "Just now"
+        : diffMin < 60
+        ? `${Math.floor(diffMin)} min ago`
+        : `${Math.floor(diffMin / 60)} hr ago`;
 
       return { ...r, isOnline, lastSeenAgo };
     });
