@@ -803,7 +803,7 @@ router.get("/track/day/:id", async (req, res) => {
     const coords = toCoords(pts);
     const stats = routeStats(pts);
 
-    // ✅ Reverse geocode the first & last points (to avoid huge API calls)
+    // ✅ Reverse geocode first & last points
     let startAddress = null,
       endAddress = null;
     if (pts.length > 0)
@@ -814,6 +814,68 @@ router.get("/track/day/:id", async (req, res) => {
         pts[pts.length - 1].lon
       );
 
+    // ✅ Detect stops/breaks (>10 minutes, <50m movement)
+    const stops = [];
+    const STOP_MIN_MINUTES = 10;
+    const STOP_MAX_MOVE_METERS = 50;
+
+    let cluster = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const prev = pts[i - 1];
+      const curr = pts[i];
+      const dtMin =
+        (new Date(curr.ts).getTime() - new Date(prev.ts).getTime()) / 60000;
+      const distKm = haversineKm(prev.lat, prev.lon, curr.lat, curr.lon);
+
+      // If within 50 meters (0.05km) → same stop area
+      if (distKm * 1000 < STOP_MAX_MOVE_METERS) {
+        cluster.push(curr);
+      } else {
+        // Evaluate previous cluster
+        const duration =
+          (new Date(cluster[cluster.length - 1].ts).getTime() -
+            new Date(cluster[0].ts).getTime()) /
+          60000;
+        if (duration >= STOP_MIN_MINUTES) {
+          const avgLat =
+            cluster.reduce((s, p) => s + p.lat, 0) / cluster.length;
+          const avgLon =
+            cluster.reduce((s, p) => s + p.lon, 0) / cluster.length;
+          const addr = await reverseGeocode(avgLat, avgLon);
+          stops.push({
+            start: cluster[0].ts,
+            end: cluster[cluster.length - 1].ts,
+            durationMin: Math.round(duration),
+            lat: avgLat,
+            lon: avgLon,
+            address: addr,
+          });
+        }
+        cluster = [curr];
+      }
+    }
+
+    // Check last cluster
+    if (cluster.length > 1) {
+      const duration =
+        (new Date(cluster[cluster.length - 1].ts).getTime() -
+          new Date(cluster[0].ts).getTime()) /
+        60000;
+      if (duration >= STOP_MIN_MINUTES) {
+        const avgLat = cluster.reduce((s, p) => s + p.lat, 0) / cluster.length;
+        const avgLon = cluster.reduce((s, p) => s + p.lon, 0) / cluster.length;
+        const addr = await reverseGeocode(avgLat, avgLon);
+        stops.push({
+          start: cluster[0].ts,
+          end: cluster[cluster.length - 1].ts,
+          durationMin: Math.round(duration),
+          lat: avgLat,
+          lon: avgLon,
+          address: addr,
+        });
+      }
+    }
+
     res.json({
       userId: id,
       date,
@@ -822,6 +884,7 @@ router.get("/track/day/:id", async (req, res) => {
       stats,
       startAddress,
       endAddress,
+      stops, // ✅ include stop points here
     });
   } catch (e) {
     console.error("GET /track/day/:id error:", e);
