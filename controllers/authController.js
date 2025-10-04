@@ -554,40 +554,60 @@ export const registerDse = async (req, res) => {
   try {
     console.log("req.body:", req.body);
     console.log("req.file:", req.file);
+
     const { name, phone, password } = req.body;
 
+    // 🔹 Validation
     if (!name || !phone || !password) {
       return res
         .status(400)
         .json({ message: "name, phone and password are required" });
     }
 
+    // 🔹 Check existing DSE
     const exists = await Dse.findOne({ phone });
-    if (exists)
+    if (exists) {
       return res.status(400).json({ message: "Phone already registered" });
+    }
 
+    // 🔹 Handle photo (optional)
     const photoUrl = req.file?.path || "";
     const photoPublicId = req.file?.filename || "";
 
+    // 🔹 Create and hash password
     const dse = new Dse({ name, phone, photoUrl, photoPublicId });
     await dse.setPassword(password);
     await dse.save();
 
-    res.json({
+    // 🔹 Generate JWT Token (✅ REAL TOKEN NOW)
+    const token = jwt.sign(
+      { id: dse._id, name: dse.name, role: dse.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "180d" }
+    );
+
+    // 🔹 Send response
+    return res.json({
+      success: true,
+      message: "DSE registered successfully",
       user: {
         id: dse._id,
-        name: dse.name,
+        name: dse.name, 
         phone: dse.phone,
         role: dse.role,
         photoUrl: dse.photoUrl,
       },
-      token: "dummy-jwt-here",
+      token,
     });
   } catch (err) {
     console.error("registerDse error:", err);
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server error while registering DSE",
+    });
   }
 };
+
 
 // --- Login DSE ---
 export const loginDse = async (req, res) => {

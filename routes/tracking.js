@@ -260,13 +260,12 @@ router.get("/latest-all", async (req, res) => {
 ============================================================ */
 router.get("/latest-all-with-dse", async (req, res) => {
   try {
-    const activeWithinMinutes = Number(req.query.activeWithinMinutes || 0);
-    const recentSince = activeWithinMinutes
-      ? new Date(Date.now() - activeWithinMinutes * 60 * 1000)
-      : null;
+    // Default to 30 minutes if not passed
+    const activeWithinMinutes = Number(req.query.activeWithinMinutes || 30);
+    const recentSince = new Date(Date.now() - activeWithinMinutes * 60 * 1000);
 
+    // 1️⃣ Get the latest location per DSE (most recent by ts)
     const pipeline = [
-      ...(recentSince ? [{ $match: { ts: { $gte: recentSince } } }] : []),
       { $sort: { user: 1, ts: -1 } },
       {
         $group: {
@@ -304,13 +303,37 @@ router.get("/latest-all-with-dse", async (req, res) => {
       },
     ];
 
-    const rows = await LocationPoint.aggregate(pipeline);
-    res.json(rows);
+    const all = await LocationPoint.aggregate(pipeline);
+
+    // 2️⃣ Add isOnline and lastSeenAgo fields
+    const now = Date.now();
+    const rows = all.map((r) => {
+      const ts = new Date(r.ts).getTime();
+      const minsAgo = Math.round((now - ts) / 60000);
+      const isOnline = ts >= recentSince.getTime();
+      return {
+        ...r,
+        isOnline,
+        lastSeenAgo: minsAgo <= 0 ? "just now" : `${minsAgo} min${minsAgo > 1 ? "s" : ""} ago`,
+      };
+    });
+
+    // 3️⃣ Sort online users first
+    rows.sort((a, b) => (a.isOnline === b.isOnline ? 0 : a.isOnline ? -1 : 1));
+
+    // ✅ Return response
+    res.json({
+      activeWithinMinutes,
+      total: rows.length,
+      online: rows.filter((r) => r.isOnline).length,
+      rows,
+    });
   } catch (err) {
     console.error("GET /latest-all-with-dse error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 /* ============================================================
    CSV: latest-all-with-dse (respects activeWithinMinutes)
