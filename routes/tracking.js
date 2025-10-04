@@ -4,6 +4,7 @@ import auth from "../middleware/authenticate.js";
 import Dse from "../models/Dse.js";
 import LocationPoint from "../models/LocationPoint.js";
 import { Parser as Json2Csv } from "json2csv";
+import ClientVisit from "../models/ClientVisit.js";
 
 const router = express.Router();
 
@@ -896,4 +897,78 @@ router.get("/export/track/day/:id.csv", async (req, res) => {
   }
 });
 
+router.post("/client-visit", auth, async (req, res) => {
+  try {
+    const { clientName, lat, lon, acc, photoUrl, photoPublicId } = req.body;
+
+    if (!clientName || !lat || !lon || !photoUrl) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const dse = await Dse.findById(req.user.id).lean();
+    if (!dse) return res.status(404).json({ message: "DSE not found" });
+
+    const visit = await ClientVisit.create({
+      dse: dse._id,
+      dseName: dse.name,
+      dsePhone: dse.phone,
+      clientName,
+      location: { lat, lon, acc },
+      photoUrl,
+      photoPublicId,
+    });
+
+    res.json({ ok: true, visit });
+  } catch (err) {
+    console.error("POST /client-visit error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ GET: All client visits (for Admin dashboard)
+router.get("/client-visits", async (req, res) => {
+  try {
+    const { from, to, dseId } = req.query;
+    const q = {};
+    if (dseId) q.dse = dseId;
+    if (from || to) {
+      q.createdAt = {};
+      if (from) q.createdAt.$gte = new Date(from);
+      if (to) q.createdAt.$lte = new Date(to);
+    }
+
+    const visits = await ClientVisit.find(q).sort({ createdAt: -1 }).lean();
+
+    res.json(visits);
+  } catch (err) {
+    console.error("GET /client-visits error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ✅ CSV export of all client visits
+router.get("/export/client-visits.csv", async (req, res) => {
+  try {
+    const visits = await ClientVisit.find({}).sort({ createdAt: -1 }).lean();
+
+    const rows = visits.map((v) => ({
+      DSE: v.dseName,
+      Phone: v.dsePhone,
+      Client: v.clientName,
+      Latitude: v.location.lat,
+      Longitude: v.location.lon,
+      Accuracy_m: v.location.acc ?? "",
+      Photo: v.photoUrl,
+      Date: new Date(v.createdAt).toLocaleString(),
+    }));
+
+    const csv = new Json2Csv().parse(rows);
+    res.header("Content-Type", "text/csv");
+    res.attachment("client-visits.csv");
+    res.send(csv);
+  } catch (err) {
+    console.error("GET /export/client-visits.csv error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 export default router;
