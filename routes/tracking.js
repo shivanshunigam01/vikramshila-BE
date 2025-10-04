@@ -5,6 +5,8 @@ import Dse from "../models/Dse.js";
 import LocationPoint from "../models/LocationPoint.js";
 import { Parser as Json2Csv } from "json2csv";
 import ClientVisit from "../models/ClientVisit.js";
+import dotenv from "dotenv";
+dotenv.config();
 
 const router = express.Router();
 
@@ -14,25 +16,44 @@ const router = express.Router();
 
 import fetch from "node-fetch";
 
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+console.log(GOOGLE_API_KEY, "GOOGLE_API_KEY in tracking.js");
 async function reverseGeocode(lat, lon) {
   try {
-    // ✅ Free service: OpenStreetMap Nominatim (no API key needed, but rate-limited)
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
-    const res = await fetch(url, { headers: { "User-Agent": "dse-tracker" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_API_KEY}`;
+    const res = await fetch(url);
     const data = await res.json();
+
+    if (!data.results?.length) throw new Error("No address found");
+
+    const best = data.results[0]; // Most accurate
+    const formatted = best.formatted_address;
+
+    // Extract more precise landmark or building name
+    const landmark =
+      best.address_components?.find(
+        (c) =>
+          c.types.includes("premise") ||
+          c.types.includes("point_of_interest") ||
+          c.types.includes("establishment")
+      )?.long_name || formatted.split(",")[0];
+
     return {
-      display: data.display_name || null,
+      display: formatted,
+      landmark, // ✅ Apartment, shop, or nearby building
       city:
-        data.address?.city ||
-        data.address?.town ||
-        data.address?.village ||
-        null,
-      state: data.address?.state || null,
-      country: data.address?.country || null,
+        best.address_components?.find((c) => c.types.includes("locality"))
+          ?.long_name || null,
+      state:
+        best.address_components?.find((c) =>
+          c.types.includes("administrative_area_level_1")
+        )?.long_name || null,
+      country:
+        best.address_components?.find((c) => c.types.includes("country"))
+          ?.long_name || null,
     };
-  } catch (e) {
-    console.error("Reverse geocode error:", e.message);
+  } catch (err) {
+    console.error("Reverse Geocode Error:", err.message);
     return null;
   }
 }
