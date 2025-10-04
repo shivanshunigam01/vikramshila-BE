@@ -253,18 +253,39 @@ router.get("/latest-all", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+/* ============================================================
+   Mark DSE as offline manually
+   POST /api/tracking/offline  { userId }
+============================================================ */
+router.post("/offline", auth, async (req, res) => {
+  try {
+    const userId = req.user?.id || req.body.userId;
+    if (!userId) return res.status(400).json({ message: "Missing userId" });
+
+    await LocationPoint.create({
+      user: userId,
+      ts: new Date(),
+      lat: 0,
+      lon: 0,
+      provider: "manual_offline",
+    });
+
+    res.json({ ok: true, message: "User marked offline" });
+  } catch (err) {
+    console.error("POST /offline error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 /* ============================================================
-   Latest for all + joined with DSE info (name/phone)
-   GET /latest-all-with-dse?activeWithinMinutes=60
+   Latest for all + joined with DSE info (with isOnline + lastSeenAgo)
+   GET /api/tracking/latest-all-with-dse?activeWithinMinutes=5
 ============================================================ */
 router.get("/latest-all-with-dse", async (req, res) => {
   try {
-    // Default to 30 minutes if not passed
-    const activeWithinMinutes = Number(req.query.activeWithinMinutes || 30);
+    const activeWithinMinutes = Number(req.query.activeWithinMinutes || 5);
     const recentSince = new Date(Date.now() - activeWithinMinutes * 60 * 1000);
 
-    // 1️⃣ Get the latest location per DSE (most recent by ts)
     const pipeline = [
       { $sort: { user: 1, ts: -1 } },
       {
@@ -293,47 +314,43 @@ router.get("/latest-all-with-dse", async (req, res) => {
           acc: 1,
           speed: 1,
           heading: 1,
-          battery: 1,
           provider: 1,
           createdAt: 1,
           updatedAt: 1,
           dseName: "$dse.name",
           dsePhone: "$dse.phone",
+          dsePhotoUrl: "$dse.photoUrl", // ✅ added
+          dsePhotoPublicId: "$dse.photoPublicId", // ✅ optional
         },
       },
     ];
 
-    const all = await LocationPoint.aggregate(pipeline);
+    const rows = await LocationPoint.aggregate(pipeline);
 
-    // 2️⃣ Add isOnline and lastSeenAgo fields
-    const now = Date.now();
-    const rows = all.map((r) => {
-      const ts = new Date(r.ts).getTime();
-      const minsAgo = Math.round((now - ts) / 60000);
-      const isOnline = ts >= recentSince.getTime();
-      return {
-        ...r,
-        isOnline,
-        lastSeenAgo: minsAgo <= 0 ? "just now" : `${minsAgo} min${minsAgo > 1 ? "s" : ""} ago`,
-      };
+    const enriched = rows.map((r) => {
+      const diffMin = (Date.now() - new Date(r.ts).getTime()) / 60000;
+      const isOnline = diffMin <= activeWithinMinutes;
+      const lastSeenAgo =
+        diffMin < 1
+          ? "Just now"
+          : diffMin < 60
+          ? `${Math.floor(diffMin)} min ago`
+          : `${Math.floor(diffMin / 60)} hr ago`;
+
+      return { ...r, isOnline, lastSeenAgo };
     });
 
-    // 3️⃣ Sort online users first
-    rows.sort((a, b) => (a.isOnline === b.isOnline ? 0 : a.isOnline ? -1 : 1));
-
-    // ✅ Return response
     res.json({
       activeWithinMinutes,
       total: rows.length,
-      online: rows.filter((r) => r.isOnline).length,
-      rows,
+      online: enriched.filter((r) => r.isOnline).length,
+      rows: enriched,
     });
   } catch (err) {
     console.error("GET /latest-all-with-dse error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 /* ============================================================
    CSV: latest-all-with-dse (respects activeWithinMinutes)
@@ -751,7 +768,9 @@ router.get("/track/day/:id", async (req, res) => {
     let pts = await LocationPoint.find({
       user: id,
       ts: { $gte: from, $lte: to },
-    }).sort({ ts: 1 }).lean();
+    })
+      .sort({ ts: 1 })
+      .lean();
 
     pts = filterByAccuracy(pts, maxAcc);
     pts = sampleByMinSeconds(pts, sampleSec);
@@ -760,9 +779,15 @@ router.get("/track/day/:id", async (req, res) => {
     const stats = routeStats(pts);
 
     // ✅ Reverse geocode the first & last points (to avoid huge API calls)
-    let startAddress = null, endAddress = null;
-    if (pts.length > 0) startAddress = await reverseGeocode(pts[0].lat, pts[0].lon);
-    if (pts.length > 1) endAddress = await reverseGeocode(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
+    let startAddress = null,
+      endAddress = null;
+    if (pts.length > 0)
+      startAddress = await reverseGeocode(pts[0].lat, pts[0].lon);
+    if (pts.length > 1)
+      endAddress = await reverseGeocode(
+        pts[pts.length - 1].lat,
+        pts[pts.length - 1].lon
+      );
 
     res.json({
       userId: id,
@@ -778,7 +803,6 @@ router.get("/track/day/:id", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 /* ====================== RANGE TRACK (grouped by day) ======================
 GET /api/tracking/track/range/:id?from=ISO&to=ISO&maxAcc=500&sampleSec=60
