@@ -9,7 +9,6 @@ import bcrypt from "bcryptjs";
 import Dse from "../models/Dse.js";
 import ClientVisit from "../models/ClientVisit.js";
 
-
 dotenv.config();
 
 const client = new twilio(
@@ -592,7 +591,7 @@ export const registerDse = async (req, res) => {
       message: "DSE registered successfully",
       user: {
         id: dse._id,
-        name: dse.name, 
+        name: dse.name,
         phone: dse.phone,
         role: dse.role,
         photoUrl: dse.photoUrl,
@@ -607,7 +606,6 @@ export const registerDse = async (req, res) => {
     });
   }
 };
-
 
 // --- Login DSE ---
 export const loginDse = async (req, res) => {
@@ -701,50 +699,52 @@ export const getDseList = async (req, res) => {
 // POST /api/auth/dse/visit   (multipart: photo; body: clientName, lat, lon, acc, dseId, dseName, dsePhone)
 export const createDseVisit = async (req, res) => {
   try {
-    const { clientName, lat, lon, acc, dseId, dseName, dsePhone } = req.body || {};
-    if (!clientName || !lat || !lon) {
-      return res.status(400).json({ message: "clientName, lat and lon are required" });
-    }
-    if (!req.file?.path) {
-      return res.status(400).json({ message: "photo is required" });
-    }
+    const {
+      clientName,
+      clientMobile,
+      currentAddress,
+      permanentAddress,
+      lat,
+      lon,
+      acc,
+      dseId,
+      dseName,
+      dsePhone,
+    } = req.body || {};
 
-    // Optional: if dseId present and valid, we can keep a real ref
+    if (!clientName || !lat || !lon || !currentAddress || !permanentAddress)
+      return res.status(400).json({ message: "Missing required fields" });
+    if (!req.file?.path)
+      return res.status(400).json({ message: "Photo is required" });
+
     let dseRef = null;
     if (dseId) {
       try {
         const dse = await Dse.findById(dseId).select("_id");
         if (dse) dseRef = dse._id;
-      } catch { /* ignore invalid ObjectId */ }
+      } catch {}
     }
 
     const visit = await ClientVisit.create({
       dse: dseRef,
-      dseName: dseName || "",
-      dsePhone: dsePhone || "",
-      clientName: String(clientName).trim(),
-      location: {
-        lat: Number(lat),
-        lon: Number(lon),
-        acc: acc ? Number(acc) : null,
-      },
+      dseName,
+      dsePhone,
+      clientName,
+      clientMobile,
+      currentAddress,
+      permanentAddress,
+      location: { lat, lon, acc: acc || null },
       photoUrl: req.file.path,
       photoPublicId: req.file.filename || "",
     });
 
-    return res.json({
+    res.json({
       success: true,
-      message: "Visit recorded",
-      data: {
-        id: visit._id,
-        clientName: visit.clientName,
-        photoUrl: visit.photoUrl,
-        location: visit.location,
-        createdAt: visit.createdAt,
-      },
+      message: "Visit recorded successfully",
+      data: visit,
     });
   } catch (err) {
     console.error("createDseVisit error:", err);
-    return res.status(500).json({ message: err.message || "Server error" });
+    res.status(500).json({ message: err.message || "Server error" });
   }
 };
