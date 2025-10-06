@@ -981,11 +981,34 @@ router.get("/export/track/day/:id.csv", async (req, res) => {
   }
 });
 
+/* ============================================================
+   ✅ POST: Record new client visit (from DSE mobile app)
+   Body fields expected:
+   - clientName, clientMobile, currentAddress, permanentAddress
+   - lat, lon, acc, photoUrl, photoPublicId
+============================================================ */
 router.post("/client-visit", auth, async (req, res) => {
   try {
-    const { clientName, lat, lon, acc, photoUrl, photoPublicId } = req.body;
+    const {
+      clientName,
+      clientMobile,
+      currentAddress,
+      permanentAddress,
+      lat,
+      lon,
+      acc,
+      photoUrl,
+      photoPublicId,
+    } = req.body;
 
-    if (!clientName || !lat || !lon || !photoUrl) {
+    if (
+      !clientName ||
+      !currentAddress ||
+      !permanentAddress ||
+      !lat ||
+      !lon ||
+      !photoUrl
+    ) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -997,6 +1020,9 @@ router.post("/client-visit", auth, async (req, res) => {
       dseName: dse.name,
       dsePhone: dse.phone,
       clientName,
+      clientMobile,
+      currentAddress,
+      permanentAddress,
       location: { lat, lon, acc },
       photoUrl,
       photoPublicId,
@@ -1009,7 +1035,11 @@ router.post("/client-visit", auth, async (req, res) => {
   }
 });
 
-// ✅ GET: All client visits (for Admin dashboard)
+/* ============================================================
+   ✅ GET: Fetch all client visits (for Admin dashboard)
+   Optional query params:
+   - dseId, from, to
+============================================================ */
 router.get("/client-visits", async (req, res) => {
   try {
     const { from, to, dseId } = req.query;
@@ -1021,24 +1051,47 @@ router.get("/client-visits", async (req, res) => {
       if (to) q.createdAt.$lte = new Date(to);
     }
 
-    const visits = await ClientVisit.find(q).sort({ createdAt: -1 }).lean();
+    const visits = await ClientVisit.find(q)
+      .sort({ createdAt: -1 })
+      .lean();
 
-    res.json(visits);
+    res.json(
+      visits.map((v) => ({
+        _id: v._id,
+        dse: v.dse,
+        dseName: v.dseName,
+        dsePhone: v.dsePhone,
+        clientName: v.clientName,
+        clientMobile: v.clientMobile,
+        currentAddress: v.currentAddress,
+        permanentAddress: v.permanentAddress,
+        location: v.location,
+        photoUrl: v.photoUrl,
+        photoPublicId: v.photoPublicId,
+        createdAt: v.createdAt,
+        updatedAt: v.updatedAt,
+      }))
+    );
   } catch (err) {
     console.error("GET /client-visits error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ✅ CSV export of all client visits
+/* ============================================================
+   ✅ CSV export for Admin
+============================================================ */
 router.get("/export/client-visits.csv", async (req, res) => {
   try {
     const visits = await ClientVisit.find({}).sort({ createdAt: -1 }).lean();
 
     const rows = visits.map((v) => ({
       DSE: v.dseName,
-      Phone: v.dsePhone,
-      Client: v.clientName,
+      "DSE Phone": v.dsePhone,
+      "Client Name": v.clientName,
+      "Client Mobile": v.clientMobile,
+      "Current Address": v.currentAddress,
+      "Permanent Address": v.permanentAddress,
       Latitude: v.location.lat,
       Longitude: v.location.lon,
       Accuracy_m: v.location.acc ?? "",
@@ -1055,4 +1108,5 @@ router.get("/export/client-visits.csv", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 export default router;
