@@ -83,7 +83,9 @@ import paymentRoutes from "./routes/payment.routes.js";
 import trackingRoutes from "./routes/tracking.js";
 import newsletterRoutes from "./routes/newsletter.js";
 import videoRoutes from "./routes/videoRoutes.js";
+import competitionRoutes from "./routes/competitionRoutes.js";
 
+app.use("/api/competition-products", competitionRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/credit", creditReportRoutes);
 app.use("/api/auth", authRoutes);

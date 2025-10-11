@@ -340,8 +340,88 @@ const clientVisitStorage = new CloudinaryStorage({
     resource_type: "image",
   },
 });
-const uploadClientVisitPhoto = multer({ storage: clientVisitStorage }).single("photo");
+const uploadClientVisitPhoto = multer({ storage: clientVisitStorage }).single(
+  "photo"
+);
 
+// ================= Competition Product Upload =================
+const competitionUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (req, file, cb) => {
+    // ✅ Accept only images and PDFs
+    if (
+      file.mimetype.startsWith("image/") ||
+      file.mimetype === "application/pdf"
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image and PDF files are allowed"), false);
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB limit per file
+}).fields([
+  { name: "images", maxCount: 5 }, // ✅ matches frontend
+  { name: "brochureFile", maxCount: 1 }, // ✅ matches frontend
+]);
+
+const uploadCompetitionMedia = (req, res, next) => {
+  competitionUpload(req, res, async (err) => {
+    if (err) return next(err);
+
+    try {
+      // ✅ Upload product images to Cloudinary
+      if (req.files?.images) {
+        const uploadPromises = req.files.images.map((file) => {
+          return new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+              {
+                folder: "competition",
+                resource_type: "auto",
+                public_id: `${Date.now()}-${file.originalname
+                  .split(".")[0]
+                  .replace(/\s+/g, "_")}`,
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else {
+                  // Mutate file object for controller use
+                  file.path = result.secure_url;
+                  file.public_id = result.public_id;
+                  resolve(result);
+                }
+              }
+            );
+            uploadStream.end(file.buffer);
+          });
+        });
+
+        await Promise.all(uploadPromises);
+      }
+
+      // ✅ Save brochure locally (PDF only)
+      if (req.files?.brochureFile && req.files.brochureFile[0]) {
+        const brochureFile = req.files.brochureFile[0];
+        const uploadsDir = path.join(__dirname, "../uploads/brochures");
+        fs.mkdirSync(uploadsDir, { recursive: true });
+
+        const ext = path.extname(brochureFile.originalname);
+        const filename = `${Date.now()}-competition-brochure${ext}`;
+        const filepath = path.join(uploadsDir, filename);
+
+        // Save PDF to disk
+        fs.writeFileSync(filepath, brochureFile.buffer);
+
+        // Mutate file object for controller
+        brochureFile.filename = filename;
+        brochureFile.path = filepath;
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+};
 // ================= EXPORTS =================
 module.exports = {
   uploadSchemeImages,
@@ -355,4 +435,5 @@ module.exports = {
   uploadLeadKyc,
   uploadDsePhoto,
   uploadClientVisitPhoto,
+  uploadCompetitionMedia,
 };
