@@ -6,6 +6,7 @@ import {
   updateCompetitionProduct,
   deleteCompetitionProduct,
   filterCompetitionAndRealProducts,
+  filterProductsAndCompetition,
 } from "../controllers/competitionController.js";
 import { uploadCompetitionMedia } from "../middleware/upload.js"; // ✅ new import
 
@@ -25,5 +26,6 @@ router.delete("/delete/:id", deleteCompetitionProduct);
 
 // ✅ Filter for comparison
 router.post("/compare-filter", filterCompetitionAndRealProducts);
+router.post("/filter", filterProductsAndCompetition);
 
 export default router;

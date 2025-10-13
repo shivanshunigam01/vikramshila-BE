@@ -292,3 +292,105 @@ export const filterCompetitionAndRealProducts = async (req, res) => {
       .json({ success: false, message: "Error fetching comparison data" });
   }
 };
+
+/**
+ * Unified Compare API
+ * Filters both Tata products and competition products based on payload + price range + other filters
+ */
+export const filterProductsAndCompetition = async (req, res) => {
+  try {
+    const { application, fuelType, payload, priceRange } = req.body || {};
+
+    // --- Parse Payload Range ---
+    const parseRange = (str) => {
+      if (!str || str === "all") return null;
+      if (str.endsWith("+")) {
+        const min = parseInt(str.replace("+", "").trim(), 10);
+        return { min, max: null };
+      }
+      if (str.includes("-")) {
+        const [a, b] = str.split("-");
+        return { min: parseInt(a), max: parseInt(b) };
+      }
+      return null;
+    };
+    const payloadRange = parseRange(payload);
+
+    // --- Parse Price Range ---
+    const parsePrice = (str) => {
+      if (!str || str === "all") return null;
+      if (str.endsWith("+")) {
+        const min = parseInt(str.replace("+", "").trim(), 10);
+        return { min, max: null };
+      }
+      if (str.includes("-")) {
+        const [a, b] = str.split("-");
+        return { min: parseInt(a), max: parseInt(b) };
+      }
+      return null;
+    };
+    const priceRangeParsed = parsePrice(priceRange);
+
+    // --- Build Text Filters ---
+    const textFilters = {};
+    if (application && application !== "all")
+      textFilters.applicationSuitability = {
+        $regex: application,
+        $options: "i",
+      };
+    if (fuelType && fuelType !== "all")
+      textFilters.fuelType = { $regex: fuelType, $options: "i" };
+
+    // --- Get Tata Products ---
+    const tataProducts = await Product.find({
+      ...textFilters,
+    }).lean();
+
+    // --- Get Competitor Products ---
+    const compProducts = await CompetitionProduct.find({
+      ...textFilters,
+    }).lean();
+
+    // --- Helper to extract numeric value ---
+    const toNumber = (v) => {
+      if (!v) return 0;
+      const s = String(v).replace(/[^\d.]/g, "");
+      return parseFloat(s) || 0;
+    };
+
+    const filterByRange = (value, range) => {
+      const num = toNumber(value);
+      if (!range) return true;
+      if (range.min && !range.max) return num >= range.min;
+      if (range.min && range.max) return num >= range.min && num <= range.max;
+      return true;
+    };
+
+    // --- Apply payload & price filters ---
+    const filteredTata = tataProducts.filter(
+      (p) =>
+        filterByRange(p.payload, payloadRange) &&
+        filterByRange(p.price, priceRangeParsed)
+    );
+
+    const filteredCompetitors = compProducts.filter(
+      (p) =>
+        filterByRange(p.payload, payloadRange) &&
+        filterByRange(p.price, priceRangeParsed)
+    );
+
+    res.json({
+      success: true,
+      totalReal: filteredTata.length,
+      totalCompetitors: filteredCompetitors.length,
+      data: { real: filteredTata, competitors: filteredCompetitors },
+    });
+  } catch (err) {
+    console.error("Unified compare error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error while comparing products",
+    });
+  }
+};
+
