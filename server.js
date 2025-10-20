@@ -35,12 +35,18 @@ app.use(
       "https://www.vikramshilaautomobiles.com/",
       "https://vikramshila-admin-panel.vercel.app",
       "",
+      // ✅ added
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "https://zentrover.com",
+      "https://www.zentrover.com",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
