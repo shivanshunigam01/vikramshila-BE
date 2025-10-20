@@ -40,7 +40,9 @@ app.use(
       "http://127.0.0.1:5173",
       "https://zentrover.com",
       "https://www.zentroverse.com",
-      
+      "https://zentroverse.com/landing",
+      "https://zentroverse.com/"
+
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
