@@ -25,25 +25,26 @@ app.use("/public", express.static(path.join(__dirname, "public")));
 app.use(morgan("dev"));
 app.use(
   cors({
-    origin: [
-      "http://localhost:8080",
-      "http://localhost:8081",
-      "http://localhost:8082",
-      "http://34.68.6.114:8081",
-      "http://34.68.6.114:8081/",
-      "https://www.vikramshilaautomobiles.com",
-      "https://www.vikramshilaautomobiles.com/",
-      "https://vikramshila-admin-panel.vercel.app",
-      "",
-      // ✅ added
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-      "https://zentrover.com",
-      "https://www.zentroverse.com",
-      "https://zentroverse.com/landing",
-      "https://zentroverse.com/"
+    // origin: [
+    //   "http://localhost:8080",
+    //   "http://localhost:8081",
+    //   "http://localhost:8082",
+    //   "http://34.68.6.114:8081",
+    //   "http://34.68.6.114:8081/",
+    //   "https://www.vikramshilaautomobiles.com",
+    //   "https://www.vikramshilaautomobiles.com/",
+    //   "https://vikramshila-admin-panel.vercel.app",
+    //   "",
+    //   // ✅ added
+    //   "http://localhost:5173",
+    //   "http://127.0.0.1:5173",
+    //   "https://zentrover.com",
+    //   "https://www.zentroverse.com",
+    //   "https://zentroverse.com/landing",
+    //   "https://zentroverse.com/"
 
-    ],
+    // ],
+    origin: true, // reflect the request's Origin header (allows all)
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
