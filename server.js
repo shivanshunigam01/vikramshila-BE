@@ -44,12 +44,13 @@ app.use(
     //   "https://zentroverse.com/"
 
     // ],
-    origin: true, // reflect the request's Origin header (allows all)
+    origin: "*", // reflect the request's Origin header (allows all)
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
 );
+app.options("*", cors());
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
