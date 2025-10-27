@@ -14,48 +14,36 @@ dotenv.config();
 const app = express();
 app.set("trust proxy", true);
 
-// __dirname polyfill (ESM)
+// Polyfill for __dirname (ESM)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Static public
-app.use("/public", express.static(path.join(__dirname, "public")));
-
-// Middleware
-app.use(morgan("dev"));
+// ─────────────────────────────
+// ✅ UNIVERSAL CORS (Allow all requests)
+// ─────────────────────────────
 app.use(
   cors({
-    // origin: [
-    //   "http://localhost:8080",
-    //   "http://localhost:8081",
-    //   "http://localhost:8082",
-    //   "http://34.68.6.114:8081",
-    //   "http://34.68.6.114:8081/",
-    //   "https://www.vikramshilaautomobiles.com",
-    //   "https://www.vikramshilaautomobiles.com/",
-    //   "https://vikramshila-admin-panel.vercel.app",
-    //   "",
-    //   // ✅ added
-    //   "http://localhost:5173",
-    //   "http://127.0.0.1:5173",
-    //   "https://zentrover.com",
-    //   "https://www.zentroverse.com",
-    //   "https://zentroverse.com/landing",
-    //   "https://zentroverse.com/"
-
-    // ],
-    origin: "*", // reflect the request's Origin header (allows all)
+    origin: "*",
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
   })
 );
+
+// Handle preflight requests globally
 app.options("*", cors());
 
+// ─────────────────────────────
+// ✅ Middleware
+// ─────────────────────────────
+app.use(morgan("dev"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Ensure uploads directories
+// ─────────────────────────────
+// ✅ Static folders setup
+// ─────────────────────────────
+app.use("/public", express.static(path.join(__dirname, "public")));
+
 const uploadsBase = path.join(__dirname, "uploads");
 const subdirs = [
   "products",
@@ -67,14 +55,14 @@ const subdirs = [
 ];
 if (!fs.existsSync(uploadsBase)) fs.mkdirSync(uploadsBase);
 for (const dir of subdirs) {
-  const p = path.join(uploadsBase, dir);
-  if (!fs.existsSync(p)) fs.mkdirSync(p);
+  const folder = path.join(uploadsBase, dir);
+  if (!fs.existsSync(folder)) fs.mkdirSync(folder);
 }
-
-// Static /uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// --- Routes (ESM imports – note the .js extensions) ---
+// ─────────────────────────────
+// ✅ Routes
+// ─────────────────────────────
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";
 import schemeRoutes from "./routes/schemeRoutes.js";
@@ -96,9 +84,7 @@ import newsletterRoutes from "./routes/newsletter.js";
 import videoRoutes from "./routes/videoRoutes.js";
 import competitionRoutes from "./routes/competitionRoutes.js";
 
-app.use("/api/competition-products", competitionRoutes);
-app.use("/api/newsletter", newsletterRoutes);
-app.use("/api/credit", creditReportRoutes);
+// Register routes
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/schemes", schemeRoutes);
@@ -109,31 +95,39 @@ app.use("/api/enquiries", enquiryRoutes);
 app.use("/api/reports", reportsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/upload", uploadRoutes);
-app.use("/api/leads", leadRoutes); // 👈 base path for your leads router
+app.use("/api/leads", leadRoutes);
 app.use("/api/service-booking", serviceBookingRoutes);
 app.use("/api/banners", bannerRoutes);
 app.use("/api/grievances", grievanceRoutes);
 app.use("/api/payment", paymentRoutes);
-app.use("/api/auth", authRoutes);
 app.use("/api/tracking", trackingRoutes);
 app.use("/api/videos", videoRoutes);
+app.use("/api/newsletter", newsletterRoutes);
+app.use("/api/competition-products", competitionRoutes);
+app.use("/api/credit", creditReportRoutes);
 
-// Health check
+// ─────────────────────────────
+// ✅ Health check
+// ─────────────────────────────
 app.get("/", (req, res) =>
   res.json({ status: "ok", app: "vikramshila-backend" })
 );
 
-// DB connect & start
+// ─────────────────────────────
+// ✅ MongoDB Connection + Start
+// ─────────────────────────────
 const MONGODB_URI =
   process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/vikramshila";
 
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
-    console.log("Connected to MongoDB:", MONGODB_URI);
+    console.log("✅ Connected to MongoDB:", MONGODB_URI);
     const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    app.listen(PORT, () =>
+      console.log(`🚀 Server running on http://localhost:${PORT}`)
+    );
   })
-  .catch((err) => console.error("MongoDB connection error:", err));
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-export default app; // ESM default export
+export default app;
