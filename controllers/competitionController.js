@@ -394,3 +394,60 @@ export const filterProductsAndCompetition = async (req, res) => {
   }
 };
 
+
+export const getCompetitionProductById = async (req, res) => {
+  try {
+    const product = await CompetitionProduct.findById(req.params.id).lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Competitor product not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: product,
+    });
+  } catch (err) {
+    console.error("Error fetching competitor product:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch competitor product",
+      error: err.message,
+    });
+  }
+};
+
+/**
+ * @desc Download competitor product brochure (inline in browser)
+ * @route GET /api/competition-products/:id/download-brochure
+ */
+export const downloadCompetitionBrochure = async (req, res) => {
+  try {
+    const product = await CompetitionProduct.findById(req.params.id);
+    if (!product?.brochureFile?.path) {
+      return res.status(404).json({ error: "Brochure not found" });
+    }
+
+    if (!fs.existsSync(product.brochureFile.path)) {
+      return res.status(404).json({ error: "File not found on server" });
+    }
+
+    res.setHeader(
+      "Content-Type",
+      product.brochureFile.mimetype || "application/pdf"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${product.brochureFile.originalName || "brochure.pdf"}"`
+    );
+
+    const stream = fs.createReadStream(product.brochureFile.path);
+    stream.pipe(res);
+  } catch (err) {
+    console.error("Brochure download error:", err);
+    res.status(500).json({ error: "Failed to access brochure" });
+  }
+};
