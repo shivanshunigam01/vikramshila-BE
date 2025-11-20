@@ -2,6 +2,9 @@ import mongoose from "mongoose";
 
 const competitionProductSchema = new mongoose.Schema(
   {
+    // SAME AS Product MODEL
+    title: { type: String, required: true },
+
     brand: String,
     model: String,
     description: String,
@@ -30,13 +33,13 @@ const competitionProductSchema = new mongoose.Schema(
     tco: String,
     profitMargin: String,
     usp: [String],
-    // ✅ fix 1: should be array
     monitoringFeatures: [String],
-    // ✅ fix 2: store as Number, but allow null
     driverComfort: { type: Number, min: 0, max: 10 },
-    // ✅ fix 3: store Cloudinary image URLs
+
+    // IMAGES
     images: [String],
-    // ✅ fix 4: allow full brochure object
+
+    // BROCHURE
     brochureFile: {
       filename: String,
       originalName: String,
@@ -44,6 +47,38 @@ const competitionProductSchema = new mongoose.Schema(
       size: Number,
       mimetype: String,
     },
+
+    // NEW —
+    reviews: [
+      {
+        type: {
+          type: String,
+          enum: ["photo", "video", "text"],
+          default: "text",
+        },
+        content: String,
+        customerName: String,
+        customerLocation: String,
+        rating: Number,
+        file: String,
+      },
+    ],
+
+    testimonials: [
+      {
+        type: {
+          type: String,
+          enum: ["photo", "video", "text"],
+          default: "text",
+        },
+        content: String,
+        customerName: String,
+        customerLocation: String,
+        customerDesignation: String,
+        file: String,
+      },
+    ],
+
     newLaunch: { type: Number, default: 0 },
   },
   { timestamps: true }

@@ -23,15 +23,17 @@ app.use("/public", express.static(path.join(__dirname, "public")));
 
 // Middleware
 app.use(morgan("dev"));
-app.use(cors({
-  origin: true,        // echoes the caller's Origin (so creds are allowed)
-  credentials: true,   // sets Access-Control-Allow-Credentials: true
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  // allowedHeaders omitted => cors will reflect Access-Control-Request-Headers
-}));
+app.use(
+  cors({
+    origin: true, // echoes the caller's Origin (so creds are allowed)
+    credentials: true, // sets Access-Control-Allow-Credentials: true
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    // allowedHeaders omitted => cors will reflect Access-Control-Request-Headers
+  })
+);
 app.options("*", cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // Ensure uploads directories
 const uploadsBase = path.join(__dirname, "uploads");

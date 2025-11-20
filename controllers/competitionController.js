@@ -2,7 +2,6 @@ import CompetitionProduct from "../models/CompetitionProduct.js";
 import Product from "../models/Product.js";
 import { cloudinary } from "../utils/cloudinary.js";
 import fs from "fs";
-import path from "path";
 
 // ---------- Helpers ----------
 const toArray = (v) =>
@@ -16,14 +15,12 @@ const toDriverComfort = (v) => {
 // ---------- CREATE ----------
 export const createCompetitionProduct = async (req, res) => {
   try {
-    // ✅ Normalize file field names
+    // FILES
     const imgFiles = req.files?.images || req.files?.image || [];
     const brochureField = req.files?.brochureFile || req.files?.brochure || [];
 
-    // ✅ Extract uploaded image URLs
     const images = imgFiles.map((f) => f.path);
 
-    // ✅ Brochure stored locally
     const brochure =
       brochureField && brochureField[0]
         ? {
@@ -35,7 +32,40 @@ export const createCompetitionProduct = async (req, res) => {
           }
         : null;
 
+    // REVIEWS + TESTIMONIALS
+    const reviews = [];
+    if (req.body.reviews) {
+      Object.keys(req.body.reviews).forEach((i) => {
+        reviews.push({
+          type: req.body.reviews[i].type,
+          content: req.body.reviews[i].content,
+          rating: req.body.reviews[i].rating,
+          customerName: req.body.reviews[i].customerName,
+          customerLocation: req.body.reviews[i].customerLocation,
+          file: req.body.reviews[i].file || "",
+        });
+      });
+    }
+
+    const testimonials = [];
+    if (req.body.testimonials) {
+      Object.keys(req.body.testimonials).forEach((i) => {
+        testimonials.push({
+          type: req.body.testimonials[i].type,
+          content: req.body.testimonials[i].content,
+          customerName: req.body.testimonials[i].customerName,
+          customerLocation: req.body.testimonials[i].customerLocation,
+          customerDesignation: req.body.testimonials[i].customerDesignation,
+          file: req.body.testimonials[i].file || "",
+        });
+      });
+    }
+
     const product = await CompetitionProduct.create({
+      // NEW FIELD
+      title: req.body.title,
+
+      // OLD FIELDS
       brand: req.body.brand,
       model: req.body.model,
       description: req.body.description,
@@ -66,8 +96,15 @@ export const createCompetitionProduct = async (req, res) => {
       usp: toArray(req.body.usp),
       monitoringFeatures: toArray(req.body.monitoringFeatures),
       driverComfort: toDriverComfort(req.body.driverComfort),
+
+      // MEDIA
       images,
       brochureFile: brochure,
+
+      // REVIEWS + TESTIMONIALS
+      reviews,
+      testimonials,
+
       newLaunch: req.body.newLaunch ? 1 : 0,
     });
 
@@ -89,7 +126,7 @@ export const getCompetitionProducts = async (req, res) => {
 
     const normalized = items.map((p) => ({
       _id: p._id,
-      title: p.model || p.title,
+      title: p.title || p.model,
       category: p.category,
       description: p.description,
       price: p.price,
@@ -127,49 +164,52 @@ export const updateCompetitionProduct = async (req, res) => {
     if (!existing)
       return res.status(404).json({ success: false, message: "Not found" });
 
-    const imgFiles = req.files?.images || req.files?.image || [];
-    const brochureField = req.files?.brochureFile || req.files?.brochure || [];
+    const imgFiles = req.files?.images || [];
+    const brochureField = req.files?.brochureFile || [];
 
-    // ✅ New Cloudinary images
     const images = imgFiles.map((f) => f.path);
 
-    // ✅ Brochure: delete old + replace
+    // Replace brochure
     let brochureFile = existing.brochureFile;
     if (brochureField && brochureField[0]) {
-      if (
-        existing.brochureFile?.path &&
-        fs.existsSync(existing.brochureFile.path)
-      ) {
-        try {
+      try {
+        if (
+          existing.brochureFile?.path &&
+          fs.existsSync(existing.brochureFile.path)
+        ) {
           fs.unlinkSync(existing.brochureFile.path);
-        } catch (err) {
-          console.warn("Failed to delete old brochure:", err.message);
         }
-      }
-      const file = brochureField[0];
+      } catch {}
+      const bf = brochureField[0];
       brochureFile = {
-        filename: file.filename,
-        originalName: file.originalname,
-        path: file.path,
-        size: file.size,
-        mimetype: file.mimetype,
+        filename: bf.filename,
+        originalName: bf.originalname,
+        path: bf.path,
+        size: bf.size,
+        mimetype: bf.mimetype,
       };
     }
 
-    // ✅ If replacing Cloudinary images, remove old ones
-    if (images.length && existing.images?.length) {
-      for (const img of existing.images) {
-        if (img.public_id) {
-          try {
-            await cloudinary.uploader.destroy(img.public_id);
-          } catch (e) {
-            console.warn("Failed to delete old Cloudinary image:", e.message);
-          }
-        }
-      }
+    // Append reviews
+    let reviews = existing.reviews;
+    if (req.body.reviews) {
+      reviews = [];
+      Object.keys(req.body.reviews).forEach((i) => {
+        reviews.push(req.body.reviews[i]);
+      });
+    }
+
+    // Append testimonials
+    let testimonials = existing.testimonials;
+    if (req.body.testimonials) {
+      testimonials = [];
+      Object.keys(req.body.testimonials).forEach((i) => {
+        testimonials.push(req.body.testimonials[i]);
+      });
     }
 
     Object.assign(existing, {
+      title: req.body.title || existing.title,
       brand: req.body.brand || existing.brand,
       model: req.body.model || existing.model,
       description: req.body.description || existing.description,
@@ -194,9 +234,12 @@ export const updateCompetitionProduct = async (req, res) => {
           : existing.driverComfort,
       images: images.length ? images : existing.images,
       brochureFile,
+      reviews,
+      testimonials,
     });
 
     await existing.save();
+
     res.json({
       success: true,
       message: "Competition Product Updated",
@@ -216,24 +259,10 @@ export const deleteCompetitionProduct = async (req, res) => {
     if (!item)
       return res.status(404).json({ success: false, message: "Not found" });
 
-    // ✅ Delete brochure from disk
     if (item.brochureFile?.path && fs.existsSync(item.brochureFile.path)) {
       try {
         fs.unlinkSync(item.brochureFile.path);
-      } catch (err) {
-        console.warn("Failed to delete brochure:", err.message);
-      }
-    }
-
-    // ✅ Delete images from Cloudinary (if any)
-    for (const img of item.images || []) {
-      if (img.public_id) {
-        try {
-          await cloudinary.uploader.destroy(img.public_id);
-        } catch (e) {
-          console.warn("Failed to delete Cloudinary image:", e.message);
-        }
-      }
+      } catch {}
     }
 
     await item.deleteOne();
@@ -243,158 +272,7 @@ export const deleteCompetitionProduct = async (req, res) => {
   }
 };
 
-// ---------- FILTER ----------
-export const filterCompetitionAndRealProducts = async (req, res) => {
-  try {
-    const { payload, fuelType, category } = req.body || {};
-
-    const payloadFilter = {};
-    const fuelFilter = {};
-    const categoryFilter = {};
-
-    if (payload && payload !== "all")
-      payloadFilter.payload = { $regex: payload, $options: "i" };
-    if (fuelType && fuelType !== "all")
-      fuelFilter.fuelType = { $regex: fuelType, $options: "i" };
-    if (category && category !== "all")
-      categoryFilter.category = { $regex: category, $options: "i" };
-
-    const realProducts = await Product.find({
-      ...payloadFilter,
-      ...fuelFilter,
-      ...categoryFilter,
-    })
-      .select(
-        "title category payload fuelType price engine torque mileage cabinType images brochureFile"
-      )
-      .lean();
-
-    const competitorProducts = await CompetitionProduct.find({
-      ...payloadFilter,
-      ...fuelFilter,
-      ...categoryFilter,
-    })
-      .select(
-        "brand model category payload fuelType price engine torque mileage cabinType images brochureFile"
-      )
-      .lean();
-
-    return res.json({
-      success: true,
-      totalReal: realProducts.length,
-      totalCompetitors: competitorProducts.length,
-      data: { real: realProducts, competitors: competitorProducts },
-    });
-  } catch (err) {
-    console.error("Compare filter error:", err);
-    res
-      .status(500)
-      .json({ success: false, message: "Error fetching comparison data" });
-  }
-};
-
-/**
- * Unified Compare API
- * Filters both Tata products and competition products based on payload + price range + other filters
- */
-export const filterProductsAndCompetition = async (req, res) => {
-  try {
-    const { application, fuelType, payload, priceRange } = req.body || {};
-
-    // --- Parse Payload Range ---
-    const parseRange = (str) => {
-      if (!str || str === "all") return null;
-      if (str.endsWith("+")) {
-        const min = parseInt(str.replace("+", "").trim(), 10);
-        return { min, max: null };
-      }
-      if (str.includes("-")) {
-        const [a, b] = str.split("-");
-        return { min: parseInt(a), max: parseInt(b) };
-      }
-      return null;
-    };
-    const payloadRange = parseRange(payload);
-
-    // --- Parse Price Range ---
-    const parsePrice = (str) => {
-      if (!str || str === "all") return null;
-      if (str.endsWith("+")) {
-        const min = parseInt(str.replace("+", "").trim(), 10);
-        return { min, max: null };
-      }
-      if (str.includes("-")) {
-        const [a, b] = str.split("-");
-        return { min: parseInt(a), max: parseInt(b) };
-      }
-      return null;
-    };
-    const priceRangeParsed = parsePrice(priceRange);
-
-    // --- Build Text Filters ---
-    const textFilters = {};
-    if (application && application !== "all")
-      textFilters.applicationSuitability = {
-        $regex: application,
-        $options: "i",
-      };
-    if (fuelType && fuelType !== "all")
-      textFilters.fuelType = { $regex: fuelType, $options: "i" };
-
-    // --- Get Tata Products ---
-    const tataProducts = await Product.find({
-      ...textFilters,
-    }).lean();
-
-    // --- Get Competitor Products ---
-    const compProducts = await CompetitionProduct.find({
-      ...textFilters,
-    }).lean();
-
-    // --- Helper to extract numeric value ---
-    const toNumber = (v) => {
-      if (!v) return 0;
-      const s = String(v).replace(/[^\d.]/g, "");
-      return parseFloat(s) || 0;
-    };
-
-    const filterByRange = (value, range) => {
-      const num = toNumber(value);
-      if (!range) return true;
-      if (range.min && !range.max) return num >= range.min;
-      if (range.min && range.max) return num >= range.min && num <= range.max;
-      return true;
-    };
-
-    // --- Apply payload & price filters ---
-    const filteredTata = tataProducts.filter(
-      (p) =>
-        filterByRange(p.payload, payloadRange) &&
-        filterByRange(p.price, priceRangeParsed)
-    );
-
-    const filteredCompetitors = compProducts.filter(
-      (p) =>
-        filterByRange(p.payload, payloadRange) &&
-        filterByRange(p.price, priceRangeParsed)
-    );
-
-    res.json({
-      success: true,
-      totalReal: filteredTata.length,
-      totalCompetitors: filteredCompetitors.length,
-      data: { real: filteredTata, competitors: filteredCompetitors },
-    });
-  } catch (err) {
-    console.error("Unified compare error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error while comparing products",
-    });
-  }
-};
-
-
+// ---------- GET BY ID ----------
 export const getCompetitionProductById = async (req, res) => {
   try {
     const product = await CompetitionProduct.findById(req.params.id).lean();
@@ -420,10 +298,6 @@ export const getCompetitionProductById = async (req, res) => {
   }
 };
 
-/**
- * @desc Download competitor product brochure (inline in browser)
- * @route GET /api/competition-products/:id/download-brochure
- */
 export const downloadCompetitionBrochure = async (req, res) => {
   try {
     const product = await CompetitionProduct.findById(req.params.id);
@@ -441,7 +315,9 @@ export const downloadCompetitionBrochure = async (req, res) => {
     );
     res.setHeader(
       "Content-Disposition",
-      `inline; filename="${product.brochureFile.originalName || "brochure.pdf"}"`
+      `inline; filename="${
+        product.brochureFile.originalName || "brochure.pdf"
+      }"`
     );
 
     const stream = fs.createReadStream(product.brochureFile.path);
