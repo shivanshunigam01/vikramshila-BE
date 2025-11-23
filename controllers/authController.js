@@ -626,20 +626,12 @@ export const loginDse = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "180d" }
     );
 
-    // ✅ Console logs on successful login
-    console.log("DSE Login Successful:");
-    console.log("ID:", dse._id.toString());
-    console.log("Name:", dse.name);
-    console.log("Phone:", dse.phone);
-    console.log("Role:", dse.role);
-    console.log("photo:", dse.photoUrl);
-    console.log("JWT Token:", token);
-
     return ok(
       res,
       {
         user: {
-          id: dse._id,
+          _id: dse._id.toString(), // REQUIRED
+          id: dse._id.toString(), // compatibility
           name: dse.name,
           phone: dse.phone,
           role: dse.role,

@@ -75,7 +75,7 @@ import trackingRoutes from "./routes/tracking.js";
 import newsletterRoutes from "./routes/newsletter.js";
 import videoRoutes from "./routes/videoRoutes.js";
 import competitionRoutes from "./routes/competitionRoutes.js";
-
+import plannerRoutes from "./routes/plannerRoutes.js";
 app.use("/api/competition-products", competitionRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/credit", creditReportRoutes);
@@ -97,6 +97,7 @@ app.use("/api/payment", paymentRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tracking", trackingRoutes);
 app.use("/api/videos", videoRoutes);
+app.use("/api/planner", plannerRoutes);
 
 // Health check
 app.get("/", (req, res) =>

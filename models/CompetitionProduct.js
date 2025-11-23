@@ -1,24 +1,66 @@
+// models/CompetitionProduct.js
 import mongoose from "mongoose";
 
 const competitionProductSchema = new mongoose.Schema(
   {
-    // SAME AS Product MODEL
-    title: { type: String, required: true },
+    // ⭐ Extra fields for competition
+    brand: { type: String, default: "" },
+    model: { type: String, default: "" },
 
-    brand: String,
-    model: String,
+    // ⭐ Same as Product schema
+    title: { type: String, required: true },
     description: String,
-    category: String,
     seatAvailability: String,
     mileage: String,
     tyreLife: String,
     tyresCost: String,
     freightRate: String,
-    price: String,
+    price: { type: String, default: "" },
+
+    // Images
+    images: [String],
+
+    // Reviews
+    reviews: [
+      {
+        type: { type: String, enum: ["photo", "video"], default: "photo" },
+        content: String,
+        customerName: String,
+        customerLocation: String,
+        rating: Number,
+        file: String,
+      },
+    ],
+
+    // Testimonials
+    testimonials: [
+      {
+        type: { type: String, enum: ["photo", "video"], default: "photo" },
+        content: String,
+        customerName: String,
+        customerLocation: String,
+        customerDesignation: String,
+        file: String,
+      },
+    ],
+
+    // Brochure file
+    brochureFile: {
+      filename: String,
+      originalName: String,
+      path: String,
+      size: Number,
+      mimetype: String,
+    },
+
+    status: { type: String, enum: ["active", "inactive"], default: "active" },
+    category: String,
+
+    // Vehicle Specs
     gvw: String,
     engine: String,
-    fuelType: String,
     fuelTankCapacity: String,
+    fuelType: String,
     gearBox: String,
     clutchDia: String,
     torque: String,
@@ -31,55 +73,13 @@ const competitionProductSchema = new mongoose.Schema(
     deckLength: [String],
     bodyDimensions: String,
     tco: String,
+    newLaunch: { type: Number, enum: [0, 1], default: 0 },
     profitMargin: String,
     usp: [String],
-    monitoringFeatures: [String],
+
+    // NEW FIELDS
+    monitoringFeatures: { type: [String], default: [] },
     driverComfort: { type: Number, min: 0, max: 10 },
-
-    // IMAGES
-    images: [String],
-
-    // BROCHURE
-    brochureFile: {
-      filename: String,
-      originalName: String,
-      path: String,
-      size: Number,
-      mimetype: String,
-    },
-
-    // NEW —
-    reviews: [
-      {
-        type: {
-          type: String,
-          enum: ["photo", "video", "text"],
-          default: "text",
-        },
-        content: String,
-        customerName: String,
-        customerLocation: String,
-        rating: Number,
-        file: String,
-      },
-    ],
-
-    testimonials: [
-      {
-        type: {
-          type: String,
-          enum: ["photo", "video", "text"],
-          default: "text",
-        },
-        content: String,
-        customerName: String,
-        customerLocation: String,
-        customerDesignation: String,
-        file: String,
-      },
-    ],
-
-    newLaunch: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
