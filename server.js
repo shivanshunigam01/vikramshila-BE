@@ -53,7 +53,6 @@ for (const dir of subdirs) {
 
 // Static /uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 // --- Routes (ESM imports – note the .js extensions) ---
 import authRoutes from "./routes/authRoutes.js";
 import productRoutes from "./routes/productRoutes.js";

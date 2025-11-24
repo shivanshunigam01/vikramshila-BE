@@ -96,7 +96,7 @@ export const create = async (req, res) => {
       brochureFile = {
         filename: file.filename,
         originalName: file.originalname,
-        path: file.path,
+        path: `/uploads/brochures/${file.filename}`,
         size: file.size,
         mimetype: file.mimetype,
       };
@@ -273,7 +273,7 @@ export const update = async (req, res) => {
       brochureFile = {
         filename: file.filename,
         originalName: file.originalname,
-        path: file.path,
+        path: `/uploads/brochures/${file.filename}`,
         size: file.size,
         mimetype: file.mimetype,
       };

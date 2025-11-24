@@ -7,7 +7,6 @@ const launchSchema = new mongoose.Schema(
     launchDate: Date,
     mediaFiles: [String],
 
-    
     // ✅ Brochure file (LOCAL DISK)
     brochureFile: {
       filename: String,
