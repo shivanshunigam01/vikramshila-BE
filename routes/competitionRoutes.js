@@ -33,5 +33,5 @@ router.post("/filter", filterProductsAndCompetition);
 router.get("/:id", getCompetitionProductById);
 
 // ✅ Download competitor brochure
-router.get("/:id/download-brochure", downloadCompetitionBrochure);
+router.get("/competition-products/:id/brochure", downloadCompetitionBrochure);
 export default router;

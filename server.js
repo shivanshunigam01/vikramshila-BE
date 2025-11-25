@@ -51,7 +51,7 @@ for (const dir of subdirs) {
   if (!fs.existsSync(p)) fs.mkdirSync(p);
 }
 
-// Static /uploads
+// Static /uploadsdownloadCompetitionBrochure 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // --- Routes (ESM imports – note the .js extensions) ---
 import authRoutes from "./routes/authRoutes.js";
