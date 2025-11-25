@@ -31,15 +31,11 @@ const uploadSingle = (fieldName) =>
 
 // ✅ NEW: Brochure (Local disk storage)
 const brochureDiskStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const dest = path.join(__dirname, "../uploads/brochures");
-    fs.mkdirSync(dest, { recursive: true });
-    cb(null, dest);
+  destination: (req, file, cb) => {
+    cb(null, path.join("/var/www/backend/uploads/brochures"));
   },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const filename = `${Date.now()}-${file.fieldname}${ext}`;
-    cb(null, filename);
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-competition-brochure.pdf");
   },
 });
 

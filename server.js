@@ -44,6 +44,7 @@ const subdirs = [
   "launches",
   "services",
   "misc",
+  "brochures",
 ];
 if (!fs.existsSync(uploadsBase)) fs.mkdirSync(uploadsBase);
 for (const dir of subdirs) {
