@@ -10,19 +10,15 @@ import {
   dseUpdateEnquiry,
 } from "../controllers/enquiryController.js";
 
-// Optional auth middlewares. If you have them, uncomment/use.
-// import { requireAuth } from "../middlewares/requireAuth.js";
+import authUser from "../middleware/authUser.js";
 
 const router = express.Router();
-
-/* ---------------- Specific routes FIRST ---------------- */
-// router.use(requireAuth); // if your API is protected globally for these routes
 
 // List all (admin panel)
 router.get("/list", listEnquiries);
 
 // Current user's assigned enquiries (DSE)
-router.get("/assigned-to-me", listAssignedToMe);
+router.get("/assigned-to-me", authUser, listAssignedToMe);
 
 // Assign an enquiry
 router.post("/assign", assignEnquiry);

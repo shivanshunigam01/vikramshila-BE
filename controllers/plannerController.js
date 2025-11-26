@@ -265,3 +265,31 @@ export const deletePlannerEntry = async (req, res) => {
     return bad(res, "Failed to delete planner entry");
   }
 };
+
+export const addFollowUpNote = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { note } = req.body;
+
+    if (!note || !note.trim()) {
+      return bad(res, "Follow-up note cannot be empty");
+    }
+
+    const item = await Planner.findById(id);
+    if (!item) return bad(res, "Planner entry not found", 404);
+
+    const newNote = {
+      note,
+      timestamp: new Date(),
+    };
+
+    // Push into array
+    item.followUpNotes.push(newNote);
+    await item.save();
+
+    return ok(res, item, "Follow-up note added");
+  } catch (err) {
+    console.error("addFollowUpNote error:", err);
+    return bad(res, "Failed to add follow-up note");
+  }
+};

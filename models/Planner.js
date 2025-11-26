@@ -3,14 +3,12 @@ import mongoose from "mongoose";
 
 const plannerSchema = new mongoose.Schema(
   {
-    // Which DSE
     dseId: { type: mongoose.Schema.Types.ObjectId, ref: "Dse", default: null },
     dseCode: { type: String, default: "" },
     dseName: { type: String, default: "" },
 
-    // Visit details
     visitDate: { type: Date, required: true },
-    visitTime: { type: String, default: "" }, // "10:30"
+    visitTime: { type: String, default: "" },
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "" },
     location: { type: String, default: "" },
@@ -23,17 +21,23 @@ const plannerSchema = new mongoose.Schema(
       default: "prospect",
     },
 
-    // Status tracking
     status: {
       type: String,
       enum: ["planned", "completed", "cancelled"],
       default: "planned",
     },
+
     completedAt: { type: Date },
     completionNotes: { type: String, default: "" },
+
+    followUpNotes: [
+      {
+        note: { type: String, required: true },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );
 
-const Planner = mongoose.model("Planner", plannerSchema);
-export default Planner;
+export default mongoose.model("Planner", plannerSchema);

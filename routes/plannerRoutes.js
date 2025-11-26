@@ -7,6 +7,7 @@ import {
   updatePlannerEntry,
   updatePlannerStatus,
   deletePlannerEntry,
+  addFollowUpNote,
 } from "../controllers/plannerController.js";
 
 import authUser from "../middleware/authUser.js";
@@ -26,5 +27,6 @@ router.delete("/:id", authUser, deletePlannerEntry);
 
 // shared
 router.get("/:id", authUser, getPlannerById);
+router.patch("/:id/follow-up", authUser, addFollowUpNote);
 
 export default router;
