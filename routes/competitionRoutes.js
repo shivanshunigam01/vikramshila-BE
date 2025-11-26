@@ -30,8 +30,8 @@ router.delete("/delete/:id", deleteCompetitionProduct);
 router.post("/compare-filter", filterCompetitionAndRealProducts);
 router.post("/filter", filterProductsAndCompetition);
 // ✅ Single competitor product details
+router.get("/:id/brochure", downloadCompetitionBrochure);
 router.get("/:id", getCompetitionProductById);
 
 // ✅ Download competitor brochure
-router.get("/:id/brochure", downloadCompetitionBrochure);
 export default router;
