@@ -11,13 +11,7 @@ router.get("/:id", ctrl.get);
 router.get("/:id/brochure", ctrl.downloadBrochure);
 
 // Protected routes
-router.post(
-  "/create",
-  protect,
-  restrict("admin", "editor"),
-  uploadProductMedia,
-  ctrl.create
-);
+router.post("/create", uploadProductMedia, ctrl.create);
 
 router.put("/:id", uploadProductMedia, ctrl.update);
 
