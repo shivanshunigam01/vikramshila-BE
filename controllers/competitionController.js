@@ -465,10 +465,22 @@ export const downloadCompetitionBrochure = async (req, res) => {
       return res.status(404).send("Brochure not found");
     }
 
-    const filePath = path.resolve(product.brochureFile.path);
+    // ----- FIX: absolute path handling -----
+    let filePath = product.brochureFile.path;
 
+    // If file path is not absolute, make it absolute
+    if (!path.isAbsolute(filePath)) {
+      filePath = path.join("/var/www/backend", filePath);
+    }
+
+    // Normalize slashes
+    filePath = filePath.replace(/\\/g, "/");
+
+    console.log("Brochure download path →", filePath);
+
+    // Check file exists
     if (!fs.existsSync(filePath)) {
-      return res.status(404).send("File does not exist");
+      return res.status(404).send("File does not exist on server: " + filePath);
     }
 
     res.setHeader("Content-Type", "application/pdf");
