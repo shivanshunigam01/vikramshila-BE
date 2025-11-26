@@ -460,6 +460,7 @@ export const deleteCompetitionProduct = async (req, res) => {
 // ---------- DOWNLOAD BROCHURE (like Product.downloadBrochure) ----------
 export const downloadCompetitionBrochure = async (req, res) => {
   try {
+    console.log("🔥🔥 BROCHURE ROUTE HIT → ID:", req.params.id);
     const product = await CompetitionProduct.findById(req.params.id);
     if (!product?.brochureFile?.path) {
       return res.status(404).send("Brochure not found");
