@@ -374,31 +374,50 @@ export const remove = async (req, res) => {
 export const downloadBrochure = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
+
     if (!product?.brochureFile?.path) {
-      return res.status(404).send("Brochure not found");
+      return res.status(404).json({
+        success: false,
+        message: "Brochure not found for this product",
+      });
     }
 
-    const filePath = path.resolve(product.brochureFile.path);
+    const filePath = product.brochureFile.path;
 
+    // Check file exists
     if (!fs.existsSync(filePath)) {
-      return res.status(404).send("File does not exist");
+      return res.status(404).json({
+        success: false,
+        message: "Brochure file missing on server",
+      });
     }
 
-    // 🔹 Set proper headers for PDF
-    res.setHeader("Content-Type", "application/pdf");
+    // STREAM PDF
+    res.setHeader(
+      "Content-Type",
+      product.brochureFile.mimetype || "application/pdf"
+    );
+
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${
+      `inline; filename="${
         product.brochureFile.originalName || "brochure.pdf"
       }"`
     );
 
-    // 🔹 Stream file
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.pipe(res);
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
+
+    stream.on("error", (err) => {
+      console.error("Stream error:", err);
+      res.status(500).json({ success: false, message: "Error reading file" });
+    });
   } catch (err) {
-    console.error("Download error:", err);
-    res.status(500).send("Server error");
+    console.error("Brochure download error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Unexpected error while downloading brochure",
+    });
   }
 };
 // 🔹 Filter Products
