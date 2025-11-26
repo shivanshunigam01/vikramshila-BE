@@ -19,13 +19,7 @@ router.post(
   ctrl.create
 );
 
-router.put(
-  "/:id",
-  protect,
-  restrict("admin", "editor"),
-  uploadProductMedia,
-  ctrl.update
-);
+router.put("/:id", uploadProductMedia, ctrl.update);
 
 router.delete("/:id", protect, restrict("admin"), ctrl.remove);
 
