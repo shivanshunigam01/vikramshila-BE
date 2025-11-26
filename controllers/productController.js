@@ -89,14 +89,21 @@ export const create = async (req, res) => {
       }
     }
 
-    // ✅ Brochure (Local disk storage)
+    // Brochure (Local disk storage)
     let brochureFile = null;
     if (req.files?.brochureFile && req.files.brochureFile[0]) {
       const file = req.files.brochureFile[0];
+
       brochureFile = {
         filename: file.filename,
         originalName: file.originalname,
-        path: `/uploads/brochures/${file.filename}`,
+
+        // 🔥 Store absolute path for backend use
+        path: path.join(__dirname, "..", "uploads", "brochures", file.filename),
+
+        // 🔥 Store public relative URL for frontend
+        relativePath: `/uploads/brochures/${file.filename}`,
+
         size: file.size,
         mimetype: file.mimetype,
       };
@@ -256,24 +263,31 @@ export const update = async (req, res) => {
       }
     }
 
-    // ✅ Brochure handling (replace & delete old local file)
     let brochureFile = product.brochureFile;
+
     if (req.files?.brochureFile && req.files.brochureFile[0]) {
+      const file = req.files.brochureFile[0];
+
+      // Delete old file (absolute path only)
       if (
         product.brochureFile?.path &&
         fs.existsSync(product.brochureFile.path)
       ) {
         try {
           fs.unlinkSync(product.brochureFile.path);
-        } catch (error) {
-          console.warn("Failed to delete old brochure:", error.message);
-        }
+        } catch {}
       }
-      const file = req.files.brochureFile[0];
+
       brochureFile = {
         filename: file.filename,
         originalName: file.originalname,
-        path: `/uploads/brochures/${file.filename}`,
+
+        // 🔥 absolute path
+        path: path.join(__dirname, "..", "uploads", "brochures", file.filename),
+
+        // 🔥 relative path
+        relativePath: `/uploads/brochures/${file.filename}`,
+
         size: file.size,
         mimetype: file.mimetype,
       };
@@ -376,28 +390,19 @@ export const downloadBrochure = async (req, res) => {
     const product = await Product.findById(req.params.id);
 
     if (!product?.brochureFile?.path) {
-      return res.status(404).json({
-        success: false,
-        message: "Brochure not found for this product",
-      });
+      return res.status(404).json({ message: "Brochure not found" });
     }
 
     const filePath = product.brochureFile.path;
 
-    // Check file exists
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: "Brochure file missing on server",
-      });
+      return res.status(404).json({ message: "Brochure file missing" });
     }
 
-    // STREAM PDF
     res.setHeader(
       "Content-Type",
       product.brochureFile.mimetype || "application/pdf"
     );
-
     res.setHeader(
       "Content-Disposition",
       `inline; filename="${
@@ -405,19 +410,10 @@ export const downloadBrochure = async (req, res) => {
       }"`
     );
 
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
-
-    stream.on("error", (err) => {
-      console.error("Stream error:", err);
-      res.status(500).json({ success: false, message: "Error reading file" });
-    });
+    fs.createReadStream(filePath).pipe(res);
   } catch (err) {
-    console.error("Brochure download error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Unexpected error while downloading brochure",
-    });
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 // 🔹 Filter Products
