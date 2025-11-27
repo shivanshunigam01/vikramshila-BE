@@ -186,6 +186,12 @@ export const list = async (req, res) => {
   }
 };
 export const get = async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid product ID",
+    });
+  }
   const item = await Product.findById(req.params.id);
   if (!item) return bad(res, "Not found", 404);
   return ok(res, item);
