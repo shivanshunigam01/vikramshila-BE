@@ -5,6 +5,7 @@ import { cloudinary } from "../utils/cloudinary.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
+import mongoose from "mongoose";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

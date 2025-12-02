@@ -561,13 +561,19 @@ export const filterCompetitionAndRealProducts = async (req, res) => {
  */
 export const filterProductsAndCompetition = async (req, res) => {
   try {
-    const { application, fuelType, payload, priceRange } = req.body || {};
+    const {
+      application,
+      fuelType,
+      payload,
+      priceRange,
+      category, // ✅ YOU MUST RECEIVE category
+    } = req.body || {};
 
-    // --- Parse Payload Range ---
+    // ✅ Parse Range Helper
     const parseRange = (str) => {
       if (!str || str === "all") return null;
       if (str.endsWith("+")) {
-        const min = parseInt(str.replace("+", "").trim(), 10);
+        const min = parseInt(str.replace("+", ""), 10);
         return { min, max: null };
       }
       if (str.includes("-")) {
@@ -576,44 +582,46 @@ export const filterProductsAndCompetition = async (req, res) => {
       }
       return null;
     };
+
     const payloadRange = parseRange(payload);
+    const priceRangeParsed = parseRange(priceRange);
 
-    // --- Parse Price Range ---
-    const parsePrice = (str) => {
-      if (!str || str === "all") return null;
-      if (str.endsWith("+")) {
-        const min = parseInt(str.replace("+", "").trim(), 10);
-        return { min, max: null };
-      }
-      if (str.includes("-")) {
-        const [a, b] = str.split("-");
-        return { min: parseInt(a), max: parseInt(b) };
-      }
-      return null;
-    };
-    const priceRangeParsed = parsePrice(priceRange);
-
-    // --- Build Text Filters ---
+    // ✅ TEXT FILTERS (DB LEVEL)
     const textFilters = {};
-    if (application && application !== "all")
+
+    if (application && application !== "all") {
       textFilters.applicationSuitability = {
         $regex: application,
         $options: "i",
       };
-    if (fuelType && fuelType !== "all")
-      textFilters.fuelType = { $regex: fuelType, $options: "i" };
+    }
 
-    // --- Get Tata Products ---
-    const tataProducts = await Product.find({
-      ...textFilters,
-    }).lean();
+    if (fuelType && fuelType !== "all") {
+      textFilters.fuelType = {
+        $regex: fuelType,
+        $options: "i",
+      };
+    }
 
-    // --- Get Competitor Products ---
-    const compProducts = await CompetitionProduct.find({
-      ...textFilters,
-    }).lean();
+    // ✅✅✅ CATEGORY FILTER (BUS / CARGO / DIRECT SCV)
+    if (category && category !== "all") {
+      if (category === "bus") {
+        textFilters.category = "SCV Passenger";
+      } else if (category === "cargo") {
+        textFilters.category = "SCV Cargo";
+      } else {
+        // ✅ Direct match: "SCV Passenger", "SCV Cargo", "LCV", "ICV"
+        textFilters.category = category;
+      }
+    }
 
-    // --- Helper to extract numeric value ---
+    console.log("✅ FINAL FILTER:", textFilters);
+
+    // ✅ FETCH FROM DB
+    const tataProducts = await Product.find(textFilters).lean();
+    const compProducts = await CompetitionProduct.find(textFilters).lean();
+
+    // ✅ NUMBER CLEANUP
     const toNumber = (v) => {
       if (!v) return 0;
       const s = String(v).replace(/[^\d.]/g, "");
@@ -628,7 +636,7 @@ export const filterProductsAndCompetition = async (req, res) => {
       return true;
     };
 
-    // --- Apply payload & price filters ---
+    // ✅ APPLY PRICE + PAYLOAD
     const filteredTata = tataProducts.filter(
       (p) =>
         filterByRange(p.payload, payloadRange) &&
@@ -641,17 +649,20 @@ export const filterProductsAndCompetition = async (req, res) => {
         filterByRange(p.price, priceRangeParsed)
     );
 
-    res.json({
+    return res.json({
       success: true,
       totalReal: filteredTata.length,
       totalCompetitors: filteredCompetitors.length,
-      data: { real: filteredTata, competitors: filteredCompetitors },
+      data: {
+        real: filteredTata,
+        competitors: filteredCompetitors,
+      },
     });
   } catch (err) {
-    console.error("Unified compare error:", err);
+    console.error("❌ Unified compare error FULL:", err);
     res.status(500).json({
       success: false,
-      message: "Server error while comparing products",
+      message: err.message || "Server error while comparing products",
     });
   }
 };
