@@ -156,17 +156,39 @@ router.post("/locations", auth, async (req, res) => {
     }
 
     // prepare docs
-    const docs = points.map((p) => ({
-      user: userId,
-      ts: new Date(Number(p.ts)),
-      lat: Number(p.lat),
-      lon: Number(p.lon),
-      acc: p.acc != null ? Number(p.acc) : undefined,
-      speed: p.speed != null ? Number(p.speed) : undefined,
-      heading: p.heading != null ? Number(p.heading) : undefined,
-      battery: p.battery != null ? Number(p.battery) : undefined,
-      provider: p.provider ?? null,
-    }));
+    const docs = points
+      .map((p) => {
+        const lat = Number(p.lat);
+        const lon = Number(p.lon);
+
+        // ✅ HARD BLOCK ZERO + NON-INDIA
+        if (
+          !lat ||
+          !lon ||
+          lat === 0 ||
+          lon === 0 ||
+          lat < 6 ||
+          lat > 37 ||
+          lon < 68 ||
+          lon > 97
+        ) {
+          console.warn("⛔ Dropped invalid location:", lat, lon);
+          return null;
+        }
+
+        return {
+          user: userId,
+          ts: new Date(Number(p.ts)),
+          lat,
+          lon,
+          acc: p.acc != null ? Number(p.acc) : undefined,
+          speed: p.speed != null ? Number(p.speed) : undefined,
+          heading: p.heading != null ? Number(p.heading) : undefined,
+          battery: p.battery != null ? Number(p.battery) : undefined,
+          provider: p.provider ?? "gps",
+        };
+      })
+      .filter(Boolean);
 
     // save
     const saved = await LocationPoint.insertMany(docs, { ordered: false });
@@ -284,15 +306,22 @@ router.post("/offline", auth, async (req, res) => {
     const userId = req.user?.id || req.body.userId;
     if (!userId) return res.status(400).json({ message: "Missing userId" });
 
+    // ✅ Fetch last valid location
+    const last = await LocationPoint.findOne({
+      user: userId,
+      lat: { $ne: 0 },
+      lon: { $ne: 0 },
+    }).sort({ ts: -1 });
+
     await LocationPoint.create({
       user: userId,
       ts: new Date(),
-      lat: 0,
-      lon: 0,
+      lat: last?.lat ?? 0.000001,
+      lon: last?.lon ?? 0.000001,
       provider: "manual_offline",
     });
 
-    res.json({ ok: true, message: "User marked offline" });
+    res.json({ ok: true, message: "User marked offline safely" });
   } catch (err) {
     console.error("POST /offline error:", err);
     res.status(500).json({ message: "Server error" });
@@ -306,17 +335,47 @@ router.post("/offline", auth, async (req, res) => {
 router.get("/latest-all-with-dse", async (req, res) => {
   try {
     const activeWithinMinutes = Number(req.query.activeWithinMinutes || 5);
-    const recentSince = new Date(Date.now() - activeWithinMinutes * 60 * 1000);
 
     const pipeline = [
+      // 1️⃣ Sort by user then latest first
       { $sort: { user: 1, ts: -1 } },
+
+      // 2️⃣ Group ALL location history per DSE
       {
         $group: {
           _id: "$user",
-          point: { $first: "$$ROOT" },
+          points: { $push: "$$ROOT" },
         },
       },
+
+      // 3️⃣ Pick FIRST VALID LOCATION (not 0,0)
+      {
+        $addFields: {
+          point: {
+            $first: {
+              $filter: {
+                input: "$points",
+                as: "p",
+                cond: {
+                  $and: [
+                    { $ne: ["$$p.lat", 0] },
+                    { $ne: ["$$p.lon", 0] },
+                    { $gte: ["$$p.lat", 6] }, // ✅ India south
+                    { $lte: ["$$p.lat", 37] }, // ✅ India north
+                    { $gte: ["$$p.lon", 68] }, // ✅ India west
+                    { $lte: ["$$p.lon", 97] }, // ✅ India east
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+
+      // 4️⃣ Flatten structure
       { $replaceRoot: { newRoot: "$point" } },
+
+      // 5️⃣ Join DSE Master
       {
         $lookup: {
           from: "dses",
@@ -326,6 +385,8 @@ router.get("/latest-all-with-dse", async (req, res) => {
         },
       },
       { $unwind: "$dse" },
+
+      // 6️⃣ Final response projection
       {
         $project: {
           _id: 1,
@@ -337,12 +398,9 @@ router.get("/latest-all-with-dse", async (req, res) => {
           speed: 1,
           heading: 1,
           provider: 1,
-          createdAt: 1,
-          updatedAt: 1,
           dseName: "$dse.name",
           dsePhone: "$dse.phone",
           dsePhotoUrl: "$dse.photoUrl",
-          dsePhotoPublicId: "$dse.photoPublicId",
         },
       },
     ];
@@ -351,10 +409,16 @@ router.get("/latest-all-with-dse", async (req, res) => {
 
     const enriched = rows.map((r) => {
       const diffMin = (Date.now() - new Date(r.ts).getTime()) / 60000;
-      const isOfflineManual = r.provider === "manual_offline";
-      const isOnline = !isOfflineManual && diffMin <= activeWithinMinutes;
 
-      const lastSeenAgo = isOfflineManual
+      const isZeroLocation = Number(r.lat) === 0 || Number(r.lon) === 0;
+      const isOfflineManual = r.provider === "manual_offline";
+
+      const isOnline =
+        !isZeroLocation && !isOfflineManual && diffMin <= activeWithinMinutes;
+
+      const lastSeenAgo = isZeroLocation
+        ? "Offline – showing last valid India location"
+        : isOfflineManual
         ? "Stopped manually"
         : diffMin < 1
         ? "Just now"
@@ -362,7 +426,12 @@ router.get("/latest-all-with-dse", async (req, res) => {
         ? `${Math.floor(diffMin)} min ago`
         : `${Math.floor(diffMin / 60)} hr ago`;
 
-      return { ...r, isOnline, lastSeenAgo };
+      return {
+        ...r,
+        isOnline,
+        isZeroLocation,
+        lastSeenAgo,
+      };
     });
 
     res.json({
@@ -728,8 +797,14 @@ router.get("/report/summary/:id.csv", async (req, res) => {
 });
 
 function filterByAccuracy(points, maxAcc) {
-  if (!maxAcc) return points;
-  return points.filter((p) => typeof p.acc !== "number" || p.acc <= maxAcc);
+  return points.filter((p) => {
+    if (!p.lat || !p.lon) return false;
+    if (p.lat === 0 || p.lon === 0) return false;
+    if (p.lat < 6 || p.lat > 37) return false;
+    if (p.lon < 68 || p.lon > 97) return false;
+    if (typeof p.acc === "number" && p.acc > maxAcc) return false;
+    return true;
+  });
 }
 
 function sampleByMinSeconds(points, minSeconds) {
@@ -1051,9 +1126,7 @@ router.get("/client-visits", async (req, res) => {
       if (to) q.createdAt.$lte = new Date(to);
     }
 
-    const visits = await ClientVisit.find(q)
-      .sort({ createdAt: -1 })
-      .lean();
+    const visits = await ClientVisit.find(q).sort({ createdAt: -1 }).lean();
 
     res.json(
       visits.map((v) => ({
