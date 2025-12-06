@@ -27,7 +27,13 @@ const genericStorage = new CloudinaryStorage({
 });
 
 const uploadSingle = (fieldName) =>
-  multer({ storage: genericStorage }).single(fieldName);
+  multer({
+    storage: genericStorage,
+    fileFilter: (req, file, cb) => {
+      // accept everything — images, pdf, docs, etc.
+      cb(null, true);
+    },
+  }).single(fieldName);
 
 // ✅ NEW: Brochure (Local disk storage)
 const brochureDiskStorage = multer.diskStorage({

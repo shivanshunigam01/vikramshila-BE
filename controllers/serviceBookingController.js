@@ -6,6 +6,8 @@ import { ok, created, bad } from "../utils/response.js";
 export const create = async (req, res) => {
   try {
     let attachment;
+    console.log("FILE RECEIVED:", req.file);
+    console.log("BODY:", req.body);
     if (req.file) {
       // upload to Cloudinary
       const result = await cloudinary.uploader.upload(req.file.path, {

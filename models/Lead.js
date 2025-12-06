@@ -10,7 +10,7 @@ const mapLegacyStatus = (val) => {
     rejected: "C2",
     approved: "C3",
   };
-  return legacy[key] || val; // if already C0..C3, keep it
+  return legacy[key] || val;
 };
 
 const DseUpdateSchema = new mongoose.Schema(
@@ -38,22 +38,18 @@ const fileSchema = new mongoose.Schema(
 const leadSchema = new mongoose.Schema(
   {
     /* -------- Product -------- */
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-    },
-    productTitle: { type: String, required: true },
-    productCategory: { type: String },
+    productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+    productTitle: String,
+    productCategory: String,
 
     /* -------- Finance -------- */
-    vehiclePrice: { type: Number, required: true },
-    downPaymentAmount: { type: Number, required: true },
-    downPaymentPercentage: { type: Number, required: true },
-    loanAmount: { type: Number, required: true },
-    interestRate: { type: Number, required: true },
-    tenure: { type: Number, required: true },
-    estimatedEMI: { type: Number, required: true },
+    vehiclePrice: Number,
+    downPaymentAmount: Number,
+    downPaymentPercentage: Number,
+    loanAmount: Number,
+    interestRate: Number,
+    tenure: Number,
+    estimatedEMI: Number,
 
     /* -------- Status -------- */
     status: {
@@ -63,54 +59,49 @@ const leadSchema = new mongoose.Schema(
       set: mapLegacyStatus,
     },
 
-    /* -------- Assignment (admin/DSE ops) -------- */
-    assignedTo: { type: String, default: null }, // display name (compat)
+    /* -------- User (optional now) -------- */
+    userId: { type: String },
+    userName: { type: String },
+    userEmail: { type: String },
+    userPhone: { type: String },
+
+    /* -------- Assignment -------- */
+    assignedTo: { type: String, default: null },
     assignedToId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     assignedToEmail: String,
 
-    /* DSE activity trail */
     dseUpdates: [DseUpdateSchema],
 
-    /* -------- User (account making the lead) -------- */
-    userId: { type: String, required: true },
-    userName: { type: String, required: true },
-    userEmail: { type: String, required: true },
-    userPhone: { type: String, required: false },
-
-    /* -------- Applicant details (optional, from modal) -------- */
+    /* -------- Applicant details (optional) -------- */
     financeCustomerName: String,
     addressLine: String,
     state: String,
     district: String,
-    pin: String, // keep as string to preserve leading zeros
+    pin: String,
     whatsapp: String,
-    applicantEmail: String, // FE sends "email" – controller maps it here
-    applicantType: {
-      type: String,
-      enum: ["individual", "company"],
-      default: "individual",
-    },
+    applicantEmail: String,
+    applicantType: { type: String, enum: ["individual", "company"] },
     companyGST: String,
     companyPAN: String,
     sourceOfEnquiry: String,
-    dseId: { type: String }, // keeps raw id string from FE (can be ObjectId string)
+    dseId: String,
     dseName: String,
 
-    /* -------- KYC fields -------- */
-    aadharFile: { type: fileSchema, default: null },
-    panCardFile: { type: fileSchema, default: null },
-    aadharNumber: { type: Number, default: null },
-    panNumber: { type: String, default: null },
+    /* -------- KYC -------- */
+    aadharFile: fileSchema,
+    panCardFile: fileSchema,
+    aadharNumber: Number,
+    panNumber: String,
     kycPhone: String,
-    kycProvided: { type: Boolean, default: false },
-    kycFields: { type: mongoose.Schema.Types.Mixed, default: {} },
-    kycConsent: { type: Boolean, default: false },
+    kycProvided: Boolean,
+    kycFields: mongoose.Schema.Types.Mixed,
+    kycConsent: Boolean,
 
-    /* -------- CIBIL / credit meta (optional) -------- */
-    cibilScore: { type: Number, default: null },
-    cibilStatus: { type: String, default: null },
+    /* -------- CIBIL -------- */
+    cibilScore: Number,
+    cibilStatus: String,
     fullNameForCibil: String,
-    creditChargeINR: { type: Number, default: 0 },
+    creditChargeINR: Number,
     creditProvider: String,
   },
   { timestamps: true }

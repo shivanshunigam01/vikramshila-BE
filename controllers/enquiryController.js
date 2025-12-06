@@ -41,7 +41,8 @@ export const getEnquiryById = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid id" });
     }
     const item = await Enquiry.findById(id);
-    if (!item) return res.status(404).json({ success: false, message: "Not found" });
+    if (!item)
+      return res.status(404).json({ success: false, message: "Not found" });
     return res.json({ success: true, data: item });
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message });
@@ -52,46 +53,36 @@ export const getEnquiryById = async (req, res) => {
 export const createEnquiry = async (req, res) => {
   try {
     const b = req.body || {};
-    // Minimal create — expand if you accept file uploads etc.
+
     const doc = await Enquiry.create({
-      // product
-      productId: b.productId,
-      productTitle: b.productTitle,
-      productCategory: b.productCategory || "",
+      // -------- USER PANEL FIELDS --------
+      customerName: b.fullName,
+      customerPhone: b.mobileNumber,
+      customerEmail: b.email || "",
 
-      // finance
-      vehiclePrice: N(b.vehiclePrice),
-      downPaymentAmount: N(b.downPaymentAmount),
-      downPaymentPercentage: N(b.downPaymentPercentage),
-      loanAmount: N(b.loanAmount),
-      interestRate: N(b.interestRate),
-      tenure: N(b.tenure),
-      estimatedEMI: N(b.estimatedEMI),
+      state: b.state,
+      pin: b.pincode,
+      briefDescription: b.briefDescription,
+      whatsappConsent: b.whatsappConsent,
 
-      // status
-      status: b.status || "C0",
+      // -------- INTERNAL DEFAULT FIELDS --------
+      status: "C0",
 
-      // customer/user
-      customerName: b.customerName || b.fullName || b.userName || "",
-      userName: b.userName,
-      userEmail: b.userEmail || b.email,
-      userPhone: b.userPhone || b.mobileNumber || b.phone,
-
-      // kyc
-      aadharNumber: b.aadharNumber,
-      panNumber: b.panNumber,
-
-      // assignment (optional at create)
+      // Allow dse assignment if passed (from admin)
       assignedTo: b.assignedTo,
-      assignedToEmail: b.assignedToEmail,
-      assignedToId: isObjectId(b.assignedToId) ? b.assignedToId : undefined,
+      assignedToId: b.assignedToId,
     });
 
-    return res.status(201).json({ success: true, message: "Enquiry created", data: doc });
+    return res.status(201).json({
+      success: true,
+      message: "Enquiry created",
+      data: doc,
+    });
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message });
   }
 };
+
 
 /* ---------------------------- UPDATE ---------------------------- */
 export const updateEnquiry = async (req, res) => {
@@ -102,7 +93,8 @@ export const updateEnquiry = async (req, res) => {
     }
     const b = req.body || {};
     const doc = await Enquiry.findByIdAndUpdate(id, b, { new: true });
-    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
+    if (!doc)
+      return res.status(404).json({ success: false, message: "Not found" });
     return res.json({ success: true, message: "Enquiry updated", data: doc });
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message });
@@ -116,7 +108,9 @@ export const assignEnquiry = async (req, res) => {
     const { enquiryId, assigneeId, assignee } = req.body || {};
 
     if (!isObjectId(enquiryId)) {
-      return res.status(400).json({ success: false, message: "Invalid enquiryId" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid enquiryId" });
     }
     if (!assigneeId && !assignee) {
       return res
@@ -150,8 +144,11 @@ export const assignEnquiry = async (req, res) => {
       }
     }
 
-    const doc = await Enquiry.findByIdAndUpdate(enquiryId, update, { new: true });
-    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
+    const doc = await Enquiry.findByIdAndUpdate(enquiryId, update, {
+      new: true,
+    });
+    if (!doc)
+      return res.status(404).json({ success: false, message: "Not found" });
 
     return res.json({ success: true, message: "Assigned", data: doc });
   } catch (e) {
@@ -174,7 +171,9 @@ export const dseUpdateEnquiry = async (req, res) => {
 
     if (status) {
       if (!allowed.has(status)) {
-        return res.status(400).json({ success: false, message: "Invalid status" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid status" });
       }
       set.status = status;
     }
@@ -202,7 +201,8 @@ export const dseUpdateEnquiry = async (req, res) => {
       { new: true }
     );
 
-    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
+    if (!doc)
+      return res.status(404).json({ success: false, message: "Not found" });
     return res.json({ success: true, data: doc });
   } catch (e) {
     return res.status(500).json({ success: false, message: e.message });

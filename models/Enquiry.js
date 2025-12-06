@@ -14,6 +14,7 @@ const fileSchema = new mongoose.Schema(
 const enquirySchema = new mongoose.Schema(
   {
     // Product
+
     productId: String,
     productTitle: String,
     productCategory: String,
@@ -35,6 +36,10 @@ const enquirySchema = new mongoose.Schema(
     },
 
     // Customer
+    state: String,
+    pin: String,
+    briefDescription: String,
+    whatsappConsent: Boolean,
     customerName: String,
     customerPhone: String,
     customerEmail: String,
