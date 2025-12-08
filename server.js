@@ -77,6 +77,8 @@ import newsletterRoutes from "./routes/newsletter.js";
 import videoRoutes from "./routes/videoRoutes.js";
 import competitionRoutes from "./routes/competitionRoutes.js";
 import plannerRoutes from "./routes/plannerRoutes.js";
+import quickEnquiryRoutes from "./routes/quickEnquiry.routes.js";
+app.use("/api/quick-enquiries", quickEnquiryRoutes);
 app.use("/api/competition-products", competitionRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/credit", creditReportRoutes);
