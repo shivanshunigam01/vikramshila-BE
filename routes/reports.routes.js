@@ -8,6 +8,7 @@ import {
   getInternalCostingReport,
   assignLead,
   assignEnquiry,
+  getDashboardOverview,          // 👈 NEW
 } from "../controllers/reports.controller.js";
 
 const router = express.Router();
@@ -16,6 +17,7 @@ const router = express.Router();
  * MOUNT at: app.use("/api/reports", router)
  *
  * Endpoints:
+ *   GET  /api/reports/overview           👈 NEW
  *   GET  /api/reports/filters
  *   GET  /api/reports/enquiries
  *   GET  /api/reports/conversions
@@ -24,6 +26,8 @@ const router = express.Router();
  *   POST /api/reports/assign-lead
  *   POST /api/reports/assign-enquiry
  */
+
+router.get("/overview", getDashboardOverview);   // 👈 NEW
 
 router.get("/filters", getFilters);
 router.get("/enquiries", getEnquiryReport);

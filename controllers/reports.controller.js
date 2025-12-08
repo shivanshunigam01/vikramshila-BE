@@ -3,6 +3,10 @@ import mongoose from "mongoose";
 import Lead from "../models/Lead.js";
 import Enquiry from "../models/Enquiry.js";
 import InternalCosting from "../models/InternalCosting.js";
+import ServiceBooking from "../models/ServiceBooking.js";
+import ClientVisit from "../models/ClientVisit.js";
+import Planner from "../models/Planner.js";
+import Grievance from "../models/Grievance.js";
 
 /* ----------------- Helpers ----------------- */
 const toObjectId = (v) => {
@@ -109,59 +113,46 @@ export const getFilters = async (_req, res, next) => {
 /* ----------------- Enquiries ----------------- */
 export const getEnquiryReport = async (req, res, next) => {
   try {
-    const {
-      granularity = "day",
-      from,
-      to,
-      branchId,
-      dseId,
-      status,
-      source,
-      format,
-    } = req.query;
+    const { granularity = "day", from, to, format } = req.query;
 
-    const match = {};
-    if (status && status !== "all") match.status = status;
-    if (source) match.source = source;
-    if (dseId) {
-      const oid = toObjectId(dseId);
-      match.$or = [{ assignedToId: oid }, { dseId: oid }];
-    }
-
-    const stages = [
+    const pipeline = [
       ...(buildDateMatch(from, to) ? [buildDateMatch(from, to)] : []),
-      ...(Object.keys(match).length ? [{ $match: match }] : []),
-      { $addFields: { _assigneeId: { $ifNull: ["$assignedToId", "$dseId"] } } },
-      ...lookupAssignee("_assigneeId"),
       ...withDateBucket(granularity),
-      ...(branchId ? [{ $match: { "assignee.branch": branchId } }] : []),
       {
         $group: {
-          _id: {
-            timeBucket: "$timeBucket",
-            branch: "$assignee.branch",
-            dseId: "$_assigneeId",
-            status: "$status",
+          _id: "$timeBucket",
+          count: { $sum: 1 }, // total enquiries in that time bucket
+
+          whatsappConsent: {
+            $sum: {
+              $cond: [{ $eq: ["$whatsappConsent", true] }, 1, 0],
+            },
           },
-          count: { $sum: 1 },
+          consentCall: {
+            $sum: {
+              $cond: [{ $eq: ["$consentCall", true] }, 1, 0],
+            },
+          },
         },
       },
       {
         $project: {
           _id: 0,
-          timeBucket: "$_id.timeBucket",
-          branch: "$_id.branch",
-          dseId: "$_id.dseId",
-          status: "$_id.status",
+          timeBucket: "$_id",
           count: 1,
+          whatsappConsent: 1,
+          consentCall: 1,
         },
       },
       { $sort: { timeBucket: 1 } },
     ];
 
-    const data = await Enquiry.aggregate(stages);
-    if (String(format).toLowerCase() === "csv")
-      return sendCSV(res, data, "enquiries.csv");
+    const data = await Enquiry.aggregate(pipeline); // 👈 Enquiry = QuickEnquiry
+
+    if (String(format).toLowerCase() === "csv") {
+      return sendCSV(res, data, "enquiries_quick.csv");
+    }
+
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -392,6 +383,119 @@ export const assignEnquiry = async (req, res, next) => {
         .status(404)
         .json({ success: false, message: "Enquiry not found" });
     res.json({ success: true, data: enquiry });
+  } catch (e) {
+    next(e);
+  }
+};
+
+/* ----------------- Dashboard Overview (ALL MODELS) ----------------- */
+export const getDashboardOverview = async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    const dateStage = buildDateMatch(from, to);
+    const dateStages = dateStage ? [dateStage] : [];
+
+    // Run everything in parallel to keep it fast
+    const [
+      leadByStatus,
+      quickEnquiryCount,
+      serviceByStatus,
+      grievanceByStatus,
+      clientVisitCount,
+      plannerByStatus,
+    ] = await Promise.all([
+      // Leads grouped by status
+      Lead.aggregate([
+        ...dateStages,
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // Quick Enquiries total count
+      Enquiry.aggregate([...dateStages, { $count: "count" }]),
+
+      // Service Bookings by status
+      ServiceBooking.aggregate([
+        ...dateStages,
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // Grievances by status
+      Grievance.aggregate([
+        ...dateStages,
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // Client Visits total count
+      ClientVisit.aggregate([...dateStages, { $count: "count" }]),
+
+      // Planner by status
+      Planner.aggregate([
+        ...dateStages,
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    const toStatusObject = (arr) =>
+      arr.reduce(
+        (acc, row) => ({
+          ...acc,
+          [row._id || "unknown"]: row.count,
+        }),
+        {}
+      );
+
+    const data = {
+      leads: {
+        total: leadByStatus.reduce((sum, r) => sum + r.count, 0),
+        byStatus: toStatusObject(leadByStatus), // { C0: x, C1: y, ... }
+      },
+
+      quickEnquiries: {
+        total: quickEnquiryCount[0]?.count || 0,
+      },
+
+      serviceBookings: {
+        total: serviceByStatus.reduce((sum, r) => sum + r.count, 0),
+        byStatus: toStatusObject(serviceByStatus), // { pending: x, confirmed: y, ... }
+      },
+
+      grievances: {
+        total: grievanceByStatus.reduce((sum, r) => sum + r.count, 0),
+        byStatus: toStatusObject(grievanceByStatus), // { pending: x, ... }
+      },
+
+      clientVisits: {
+        total: clientVisitCount[0]?.count || 0,
+      },
+
+      planner: {
+        total: plannerByStatus.reduce((sum, r) => sum + r.count, 0),
+        byStatus: toStatusObject(plannerByStatus), // { planned: x, completed: y, ... }
+      },
+    };
+
+    // ✅ GUARANTEE: every document in each collection is counted exactly once (within date range)
+    res.json({ success: true, data });
   } catch (e) {
     next(e);
   }
